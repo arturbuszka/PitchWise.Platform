@@ -27,7 +27,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "→ requesting signed HLS URL from API (the one and only API call)…"
-manifest_url="$(curl -fsS "${API}/api/analyses/${ANALYSIS_ID}/highlights/${HIGHLIGHT_ID}/hls" \
+manifest_url="$(curl -fsS -H "X-Api-Key: ${API_KEY:-demo-key}" "${API}/api/analyses/${ANALYSIS_ID}/highlights/${HIGHLIGHT_ID}/hls" \
   | sed -n 's/.*"url"[ :]*"\([^"]*\)".*/\1/p')"
 if [ -z "$manifest_url" ]; then
   echo "✗ API did not return an HLS url — is hls_ready true for this highlight?" >&2
@@ -35,12 +35,10 @@ if [ -z "$manifest_url" ]; then
 fi
 echo "  manifest: $manifest_url"
 
-# Split the signed query (?md5=...&expires=...) so we can append it to each segment URL.
 base="${manifest_url%/*}"            # http://localhost:8080/hls/{id}
-query="${manifest_url#*\?}"          # md5=...&expires=...
 
 echo "→ fetching manifest once to enumerate segments…"
-segments="$(curl -fsS "$manifest_url" | grep -E '\.ts$' || true)"
+segments="$(curl -fsS "$manifest_url" | grep -E '\.ts' || true)"
 seg_count="$(printf '%s\n' "$segments" | grep -c . || true)"
 echo "  segments: $seg_count"
 if [ "$seg_count" -eq 0 ]; then
@@ -53,7 +51,7 @@ viewer() {
   curl -s -o /dev/null -w '%{http_code} %header{x-cache-status}\n' "$manifest_url"
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
-    curl -s -o /dev/null -w '%{http_code} %header{x-cache-status}\n' "${base}/${seg}?${query}"
+    curl -s -o /dev/null -w '%{http_code} %header{x-cache-status}\n' "${base}/${seg}"  # the edge already signed each segment line
   done <<< "$segments"
 }
 export -f viewer
