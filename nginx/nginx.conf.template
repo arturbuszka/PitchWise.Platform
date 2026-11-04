@@ -1,0 +1,99 @@
+# PitchWise HLS edge — simulates a CDN: validates signed URLs and serves/caches
+# HLS segments so the application server (.NET) never touches video bytes.
+#
+# Only ${HLS_SIGNING_SECRET} is substituted at startup (NGINX_ENVSUBST_FILTER);
+# nginx runtime vars like $uri, $arg_md5, $secure_link stay literal.
+#
+# Signature model:
+#   The API signs the DIRECTORY PREFIX "/hls/{id}/" and hands the browser a manifest
+#   URL with ?md5=&expires=. The PLAYER, however, fetches segment_*.ts using the
+#   RELATIVE names from the manifest — WITHOUT the query string. Native HLS players
+#   (Safari/iOS, Android Chrome) never propagate the manifest's query to segments, so
+#   a query-only signature makes every segment a 403.
+#
+#   Fix: when we serve the manifest, sub_filter rewrites each relative "segment_NNN.ts"
+#   line to "segment_NNN.ts?md5=&expires=" carrying the SAME signature the manifest was
+#   requested with. The player then fetches every segment with the query string already
+#   embedded, so it authorizes itself against the same "/hls/{id}/" prefix. Works for
+#   hls.js and native players alike, no cookies/credentials needed.
+#
+# Two server blocks:
+#   :80   public edge — validates the signed URL, then proxies to the origin WITH caching.
+#   :8081 internal origin (loopback only) — plain static file server off the shared volume.
+
+# Edge cache ("CDN edge"). First viewer warms it (MISS); later viewers hit it (HIT).
+proxy_cache_path /var/cache/nginx/hls levels=1:2 keys_zone=hls:10m max_size=1g
+                 inactive=10m use_temp_path=off;
+
+# Public edge.
+server {
+    listen 80;
+    server_name _;
+
+    # The manifest carries the signature in the query string (minted by the API).
+    # Validate it, then rewrite the segment lines to carry the same signature so the
+    # player fetches each segment already signed.
+    location ~ ^/hls/(?<hls_id>[0-9]+)/index\.m3u8$ {
+        set $hls_dir "/hls/$hls_id/";
+
+        secure_link $arg_md5,$arg_expires;
+        secure_link_md5 "$secure_link_expires $hls_dir ${HLS_SIGNING_SECRET}";
+
+        if ($secure_link = "")  { return 403; }   # bad/missing signature
+        if ($secure_link = "0") { return 410; }   # expired
+
+        proxy_pass http://127.0.0.1:8081/hls/$hls_id/index.m3u8;
+        proxy_cache hls;
+        proxy_cache_valid 200 206 10m;
+        # Cache key excludes the token, but the rewrite below depends on it — so the
+        # cached body is signature-specific. Include md5 in the key to avoid serving a
+        # body stamped with someone else's (expiring) signature.
+        proxy_cache_key "$hls_id/index.m3u8/$arg_md5";
+        add_header X-Cache-Status $upstream_cache_status always;
+
+        # Append the manifest's own signature to every relative segment reference.
+        # In an HLS media playlist ".ts" only ever appears as a segment-name suffix,
+        # so a plain ".ts" match is safe. sub_filter_once off → every line.
+        sub_filter_types application/vnd.apple.mpegurl;
+        sub_filter_once off;
+        sub_filter ".ts" ".ts?md5=$arg_md5&expires=$arg_expires";
+
+        # hls.js fetches the manifest/segments cross-origin (page on :3000, edge on :8080).
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    }
+
+    # Segments — now arrive with the query string the manifest rewrite added.
+    location ~ ^/hls/(?<hls_id>[0-9]+)/(?<hls_file>segment_[^/]+\.ts)$ {
+        set $hls_dir "/hls/$hls_id/";
+
+        secure_link $arg_md5,$arg_expires;
+        secure_link_md5 "$secure_link_expires $hls_dir ${HLS_SIGNING_SECRET}";
+
+        if ($secure_link = "")  { return 403; }   # bad/missing signature
+        if ($secure_link = "0") { return 410; }   # expired
+
+        proxy_pass http://127.0.0.1:8081/hls/$hls_id/$hls_file;
+        proxy_cache hls;
+        proxy_cache_valid 200 206 10m;
+        proxy_cache_key "$hls_id/$hls_file";
+        add_header X-Cache-Status $upstream_cache_status always;
+
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    }
+}
+
+# Internal origin — loopback only, not published. Plain static files off /srv.
+server {
+    listen 127.0.0.1:8081;
+    server_name _;
+
+    location /hls/ {
+        root /srv;                       # /srv/hls/{id}/<file>
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t                    ts;
+        }
+    }
+}

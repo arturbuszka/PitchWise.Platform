@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Deliberately no PackageReference. The engine is pure math over an abstract
+       per-frame observation: no OpenCV, no ONNX, no EF. Keeping it dependency-free is
+       what lets the vision layer be swapped (YOLO11 -> RT-DETR) without touching match
+       logic, and what would make it reusable for another sport. System.Text.Json comes
+       from the framework. Do not add packages here without a very good reason. -->
+
+</Project>

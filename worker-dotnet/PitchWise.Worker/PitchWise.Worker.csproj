@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>pitchwise-worker</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <!-- Pin EF Core to the same version the API resolves (9.0.*) so the shared
+         AppDbContext assembly loads without a version-conflict (CS1705). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="StackExchange.Redis" Version="3.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Vision core (YOLO11 ONNX + ByteTrack + events + ffmpeg). -->
+    <ProjectReference Include="..\PitchWise.Vision\PitchWise.Vision.csproj" />
+    <ProjectReference Include="..\..\shared\PitchWise.Data\PitchWise.Data.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pitchwise
+      POSTGRES_PASSWORD: pitchwise
+      POSTGRES_DB: pitchwise
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pitchwise"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+
+  api:
+    build:
+      context: .
+      dockerfile: api-dotnet/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
+      REDIS_URL: "redis:6379"
+      STORAGE_DIR: "/app/storage"
+      # HLS signed-URL minting (must match the nginx edge secret).
+      HLS_BASE_URL: "http://localhost:8080"
+      HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
+      HLS_LINK_TTL_SECONDS: "3600"
+      # Live server URL as seen by the browser (host port 8001 exposed by the worker).
+      # Use 127.0.0.1 not localhost — on Windows/WSL2, localhost resolves to ::1 (IPv6)
+      # which hits wslrelay instead of the Docker port proxy, causing ERR_CONNECTION_RESET.
+      LIVE_WORKER_URL: "http://127.0.0.1:8001"
+    volumes:
+      - ./storage:/app/storage:z
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker-dotnet/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
+      REDIS_URL: "redis://redis:6379"
+      STORAGE_DIR: "/app/storage"
+      # yolo11n (COCO) is what tools/models/export_yolo11n.sh produces. Set YOLO_MODEL=football
+      # after adding the football weights; see "Model setup" in the README.
+      YOLO_MODEL_PATH: "/app/models/${YOLO_MODEL:-yolo11n}.onnx"
+      # Optional models; see "Model setup" in the README. Leave unset to turn the feature off.
+      REID_MODEL_PATH: "${REID_MODEL_PATH:-}"
+      PITCH_MODEL_PATH: "${PITCH_MODEL_PATH:-}"
+      LIVE_PIPELINE_MODE: "detect"
+    volumes:
+      - ./storage:/app/storage:z
+      - ./worker-dotnet/vision-onnx:/app/models:ro,z
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      # the API applies the migrations the worker depends on
+      api:
+        condition: service_healthy
+
+  # CDN-style edge: validates signed HLS URLs (secure_link) and caches segments,
+  # so the .NET API never serves video bytes. storage/hls is written by the worker
+  # and served read-only here.
+  nginx:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    environment:
+      HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
+      # Only substitute our secret; leave nginx runtime vars ($uri, $arg_md5, …) intact.
+      NGINX_ENVSUBST_FILTER: "HLS_SIGNING_SECRET"
+    volumes:
+      - ./storage/hls:/srv/hls:ro,z
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
+    depends_on:
+      - worker
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+      # rewrites() is baked at build time (standalone) → the proxy destination must be
+      # set here, not just at runtime.
+      args:
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    environment:
+      # The browser uses relative /api/* (same-origin) → Next proxy. SSR and the proxy
+      # run inside this container, so they reach the API via its service name.
+      # NEXT_PUBLIC_API_URL is intentionally empty (baked at build → relative paths).
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

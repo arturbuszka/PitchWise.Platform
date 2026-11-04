@@ -1,0 +1,307 @@
+{
+  "model": "worker\\yolo11n.pt",
+  "onnx": "yolo11n.onnx",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.7,
+  "names": {
+    "0": "person",
+    "1": "bicycle",
+    "2": "car",
+    "3": "motorcycle",
+    "4": "airplane",
+    "5": "bus",
+    "6": "train",
+    "7": "truck",
+    "8": "boat",
+    "9": "traffic light",
+    "10": "fire hydrant",
+    "11": "stop sign",
+    "12": "parking meter",
+    "13": "bench",
+    "14": "bird",
+    "15": "cat",
+    "16": "dog",
+    "17": "horse",
+    "18": "sheep",
+    "19": "cow",
+    "20": "elephant",
+    "21": "bear",
+    "22": "zebra",
+    "23": "giraffe",
+    "24": "backpack",
+    "25": "umbrella",
+    "26": "handbag",
+    "27": "tie",
+    "28": "suitcase",
+    "29": "frisbee",
+    "30": "skis",
+    "31": "snowboard",
+    "32": "sports ball",
+    "33": "kite",
+    "34": "baseball bat",
+    "35": "baseball glove",
+    "36": "skateboard",
+    "37": "surfboard",
+    "38": "tennis racket",
+    "39": "bottle",
+    "40": "wine glass",
+    "41": "cup",
+    "42": "fork",
+    "43": "knife",
+    "44": "spoon",
+    "45": "bowl",
+    "46": "banana",
+    "47": "apple",
+    "48": "sandwich",
+    "49": "orange",
+    "50": "broccoli",
+    "51": "carrot",
+    "52": "hot dog",
+    "53": "pizza",
+    "54": "donut",
+    "55": "cake",
+    "56": "chair",
+    "57": "couch",
+    "58": "potted plant",
+    "59": "bed",
+    "60": "dining table",
+    "61": "toilet",
+    "62": "tv",
+    "63": "laptop",
+    "64": "mouse",
+    "65": "remote",
+    "66": "keyboard",
+    "67": "cell phone",
+    "68": "microwave",
+    "69": "oven",
+    "70": "toaster",
+    "71": "sink",
+    "72": "refrigerator",
+    "73": "book",
+    "74": "clock",
+    "75": "vase",
+    "76": "scissors",
+    "77": "teddy bear",
+    "78": "hair drier",
+    "79": "toothbrush"
+  },
+  "frames": {
+    "0": {
+      "width": 1920,
+      "height": 1080,
+      "detections": [
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.8868,
+          "xyxy": [
+            765.36,
+            54.1,
+            1210.4,
+            551.31
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.8128,
+          "xyxy": [
+            1511.33,
+            38.02,
+            1823.96,
+            518.26
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.779,
+          "xyxy": [
+            117.96,
+            126.32,
+            531.61,
+            574.54
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.3613,
+          "xyxy": [
+            0.33,
+            235.81,
+            111.32,
+            429.98
+          ]
+        },
+        {
+          "cls": 56,
+          "name": "chair",
+          "conf": 0.3397,
+          "xyxy": [
+            1202.4,
+            444.14,
+            1291.78,
+            550.82
+          ]
+        },
+        {
+          "cls": 58,
+          "name": "potted plant",
+          "conf": 0.3308,
+          "xyxy": [
+            860.53,
+            2.31,
+            1002.15,
+            270.15
+          ]
+        }
+      ]
+    },
+    "25": {
+      "width": 1920,
+      "height": 1080,
+      "detections": [
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.8857,
+          "xyxy": [
+            765.19,
+            54.18,
+            1210.38,
+            552.04
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.8129,
+          "xyxy": [
+            1511.18,
+            38.02,
+            1823.82,
+            518.18
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.7786,
+          "xyxy": [
+            117.93,
+            126.48,
+            531.79,
+            575.23
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.3636,
+          "xyxy": [
+            0.33,
+            235.84,
+            111.46,
+            430.33
+          ]
+        },
+        {
+          "cls": 56,
+          "name": "chair",
+          "conf": 0.3522,
+          "xyxy": [
+            1202.38,
+            444.23,
+            1291.73,
+            550.83
+          ]
+        },
+        {
+          "cls": 58,
+          "name": "potted plant",
+          "conf": 0.3333,
+          "xyxy": [
+            860.7,
+            2.3,
+            1002.18,
+            270.44
+          ]
+        }
+      ]
+    },
+    "50": {
+      "width": 1920,
+      "height": 1080,
+      "detections": [
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.8847,
+          "xyxy": [
+            764.84,
+            54.39,
+            1210.42,
+            552.15
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.809,
+          "xyxy": [
+            1511.09,
+            37.78,
+            1824.13,
+            517.98
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.7798,
+          "xyxy": [
+            118.35,
+            126.29,
+            531.75,
+            575.69
+          ]
+        },
+        {
+          "cls": 0,
+          "name": "person",
+          "conf": 0.3515,
+          "xyxy": [
+            0.34,
+            235.55,
+            111.14,
+            430.01
+          ]
+        },
+        {
+          "cls": 56,
+          "name": "chair",
+          "conf": 0.3375,
+          "xyxy": [
+            1202.38,
+            444.27,
+            1291.64,
+            550.76
+          ]
+        },
+        {
+          "cls": 58,
+          "name": "potted plant",
+          "conf": 0.327,
+          "xyxy": [
+            860.86,
+            2.32,
+            1002.07,
+            270.29
+          ]
+        }
+      ]
+    }
+  }
+}
