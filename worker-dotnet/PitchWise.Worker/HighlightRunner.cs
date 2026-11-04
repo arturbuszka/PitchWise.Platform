@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using PitchWise.Data.Config;
 using PitchWise.Data;
 using PitchWise.Data.Models;
-using PitchWise.Vision;
 
 namespace PitchWise.Worker;
 

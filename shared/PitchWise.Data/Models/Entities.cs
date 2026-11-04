@@ -5,6 +5,7 @@ namespace PitchWise.Data.Models;
 public class AnalysisSession
 {
     public int Id { get; set; }
+    public int TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Subtitle { get; set; }
     public string Sport { get; set; } = "football";
@@ -22,50 +23,6 @@ public class Video
     public double? DurationSeconds { get; set; }
     public double? Fps { get; set; }
     public int Order { get; set; }
-    // Annotated (boxes burned-in) MP4, stitched from all segment renders. Null until
-    // every segment of this video has finished rendering. Served for playback with
-    // full rewind (HTTP Range); the raw upload is the fallback.
-    public string? AnnotatedFilename { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-public class VisionJob
-{
-    public int Id { get; set; }
-    public int VideoId { get; set; }
-    public VisionJobStatus Status { get; set; } = VisionJobStatus.Pending;
-    public double Progress { get; set; }
-    public string? Error { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? FinishedAt { get; set; }
-}
-
-// Whole-match aggregate statistics for one analysed video, produced by the worker's
-// MatchStatsTracker. One row per video (upsert on re-analysis). Team-level counts are plain
-// columns; the per-player time-on-pitch list is variable-length and stored as JSON.
-public class MatchStats
-{
-    public int Id { get; set; }
-    public int VideoId { get; set; }
-    public int AnalysisId { get; set; }
-
-    // Possession split (of controlled time; A + B ≈ 100 when the engine attributed any).
-    public double PossessionPctA { get; set; }
-    public double PossessionPctB { get; set; }
-    public double ControlledSeconds { get; set; }
-    public double LooseSeconds { get; set; }
-
-    // Passing, per team.
-    public int PassesA { get; set; }
-    public int PassesB { get; set; }
-    public int TurnoversA { get; set; }
-    public int TurnoversB { get; set; }
-    public double PassAccuracyPctA { get; set; }
-    public double PassAccuracyPctB { get; set; }
-
-    // JSON array of { player_id, seconds_on_pitch, frames_seen }, descending by time.
-    public string TimeOnPitchJson { get; set; } = "[]";
-
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -87,28 +44,6 @@ public class Event
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class Clip
-{
-    public int Id { get; set; }
-    public int EventId { get; set; }
-    public int VideoId { get; set; }
-    public string Filename { get; set; } = string.Empty;
-    public double StartSeconds { get; set; }
-    public double EndSeconds { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-public class LiveSession
-{
-    public string Id { get; set; } = string.Empty;  // UUID4
-    public string SourceUrl { get; set; } = string.Empty;
-    public string Status { get; set; } = "idle";    // idle | running | stopped
-    public string WsUrl { get; set; } = string.Empty;
-    public string HlsUrl { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? StoppedAt { get; set; }
-}
-
 // A highlight reel stitched from clips around a coach-selected set of events.
 // Rendered in the background by the worker (ffmpeg concat), then streamed via
 // HTTP Range. ShareToken/ShareExpiresAt back the public, time-limited share link.
@@ -128,4 +63,34 @@ public class Highlight
     public DateTime? ShareExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? FinishedAt { get; set; }
+}
+
+// A customer of the platform. Everything a customer creates belongs to one tenant.
+public class Tenant
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// Only the hash is stored, so a database leak does not expose working keys.
+public class ApiKey
+{
+    public int Id { get; set; }
+    public int TenantId { get; set; }
+    public string KeyHash { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// One live channel: an encoder publishes to it over RTMP and viewers watch it over HLS.
+public class LiveStream
+{
+    public Guid Id { get; set; }
+    public int TenantId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string StreamKeyHash { get; set; } = string.Empty;
+    public LiveStreamStatus Status { get; set; } = LiveStreamStatus.Idle;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? StartedAt { get; set; }
+    public DateTime? EndedAt { get; set; }
 }

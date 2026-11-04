@@ -12,16 +12,8 @@ public class AppSettings
 
     public string RedisUrl { get; set; } = "localhost:6379";
 
-    public string LlmProvider { get; set; } = "openai";
-    public string LlmBaseUrl { get; set; } = "https://api.openai.com/v1";
-    public string LlmApiKey { get; set; } = "";
-    public string LlmModel { get; set; } = "gpt-4o-mini";
-
     public string WebOrigin { get; set; } = "http://localhost:3000";
     public string WebOriginAlt { get; set; } = "http://localhost:3001";
-
-    // Name of the Redis list the vision worker pops from.
-    public string VisionQueue { get; set; } = "vision_jobs";
 
     // Name of the Redis list the highlight worker loop pops from.
     public string HighlightQueue { get; set; } = "highlight_jobs";
@@ -37,8 +29,20 @@ public class AppSettings
     // How long a signed HLS URL stays valid.
     public int HlsLinkTtlSeconds { get; set; } = 3600;
 
-    // URL of the live WebSocket + HLS server (port 8001).
-    public string LiveWorkerUrl { get; set; } = "http://localhost:8001";
+    // --- Tenancy ---
+    // Required by POST /api/admin/tenants. Empty turns the endpoint off.
+    public string AdminToken { get; set; } = "";
+    // When set, startup makes sure a demo tenant has this key, for local use and the web console.
+    public string BootstrapApiKey { get; set; } = "";
+
+    // --- Live ingest (MediaMTX) ---
+    // Where encoders publish, as they see it.
+    public string RtmpIngestUrl { get; set; } = "rtmp://localhost:1935";
+    // MediaMTX control API, reachable only from inside the deployment.
+    public string MediaMtxApiUrl { get; set; } = "http://localhost:9997";
+    // Part of the auth callback URL, so only MediaMTX can reach that endpoint.
+    public string MediaMtxAuthSecret { get; set; } = "devsecret";
+    public int MediaMtxPollSeconds { get; set; } = 2;
 
     public string UploadsDir => Path.Combine(StorageDir, "uploads");
     public string ClipsDir => Path.Combine(StorageDir, "clips");

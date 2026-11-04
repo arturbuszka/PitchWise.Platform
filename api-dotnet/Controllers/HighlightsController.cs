@@ -11,7 +11,6 @@ namespace PitchWise.Api.Controllers;
 
 // Highlight reels: create (enqueue render job), poll status, stream the stitched
 // file (HTTP Range), and mint a time-limited public share link.
-// Mirrors the VisionJob lifecycle in VideosController.
 [ApiController]
 [Route("api/analyses")]
 public class HighlightsController : ControllerBase

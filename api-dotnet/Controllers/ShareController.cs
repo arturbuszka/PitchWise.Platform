@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ namespace PitchWise.Api.Controllers;
 // Public, unauthenticated access to a highlight via a share token. No analysis id
 // is exposed. Expired tokens return 410 Gone. The /stream endpoint serves the file
 // with HTTP Range so the browser streams it (no download) inside a <video> tag.
+[AllowAnonymous]
 [ApiController]
 [Route("api/share")]
 public class ShareController : ControllerBase

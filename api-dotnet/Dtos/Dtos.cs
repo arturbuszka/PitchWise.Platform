@@ -36,26 +36,6 @@ public record AnalysisDetail(
     DateTime UpdatedAt,
     List<VideoOut> Videos);
 
-// One video → one analysis job. AnnotatedReady flags that the boxes-burned-in playback
-// file has been rendered (until then the player shows a placeholder).
-public record VisionJobOut(
-    int Id,
-    int VideoId,
-    VisionJobStatus Status,
-    double Progress,
-    string? Error,
-    DateTime CreatedAt,
-    DateTime? FinishedAt,
-    bool AnnotatedReady = false);
-
-public record ClipOut(
-    int Id,
-    int EventId,
-    int VideoId,
-    string Filename,
-    double StartSeconds,
-    double EndSeconds);
-
 public record EventOut(
     int Id,
     int AnalysisId,
@@ -69,8 +49,7 @@ public record EventOut(
     int? PlayerNumber,
     string? PlayerName,
     int? AssistNumber,
-    string? AssistName,
-    ClipOut? Clip = null);
+    string? AssistName);
 
 public record EventCreate(
     double TimestampSeconds,
@@ -89,10 +68,6 @@ public record EventTypeConfigOut(
     string Icon,
     string Color,
     string Bg);
-
-public record ChatMessage(string Role, string Content);
-
-public record ChatRequest(List<ChatMessage> Messages, int? AnalysisId = null);
 
 // --- Highlights ---
 
@@ -119,22 +94,28 @@ public record HlsUrlOut(string Url, DateTime ExpiresAt);
 // Public metadata for the share page (no analysis id leaked).
 public record SharePublicOut(string Name, HighlightStatus Status, DateTime ExpiresAt);
 
-// --- Match statistics ---
+// --- Live streams ---
 
-public record TeamStatsOut(
-    double PossessionPct,
-    int Passes,
-    int Turnovers,
-    double PassAccuracyPct);
+public record CreateStreamIn(string Name);
 
-// Whole-match aggregates for one video. All zero when the engine ran without pitch coordinates;
-// the frontend renders an explicit empty state in that case. TimeOnPitch is passed through as the
-// raw JSON array stored by the worker.
-public record MatchStatsOut(
-    int VideoId,
-    int AnalysisId,
-    TeamStatsOut TeamA,
-    TeamStatsOut TeamB,
-    double ControlledSeconds,
-    double LooseSeconds,
-    System.Text.Json.JsonElement TimeOnPitch);
+public record StreamOut(
+    Guid Id,
+    string Name,
+    LiveStreamStatus Status,
+    DateTime CreatedAt,
+    DateTime? StartedAt,
+    DateTime? EndedAt);
+
+// Only returned at creation: the stream key is stored hashed and cannot be shown again.
+public record CreatedStreamOut(StreamOut Stream, string StreamKey, string IngestUrl);
+
+// --- Admin ---
+
+public record CreateTenantIn(string Name);
+
+// The API key is only shown here; it is stored hashed.
+public record CreatedTenantOut(int Id, string Name, string ApiKey);
+
+// --- MediaMTX auth callback ---
+
+public record MediaMtxAuthIn(string? Action, string? Path, string? Query);

@@ -40,6 +40,18 @@ public class HlsSigner
         return (url, expires);
     }
 
+    // A live stream's playlists and segments change constantly and some players drop query
+    // strings, so the signature sits in the path, where relative URLs inherit it. It covers
+    // "/live/{id}/", which lets the edge share one cache entry per segment between all viewers.
+    public (string Url, DateTimeOffset ExpiresAt) SignLive(Guid streamId)
+    {
+        var expires = DateTimeOffset.UtcNow.AddSeconds(_settings.HlsLinkTtlSeconds);
+        var epoch = expires.ToUnixTimeSeconds();
+        var toSign = $"{epoch} /live/{streamId}/ {_settings.HlsSigningSecret}";
+        var md5 = Base64Url(MD5.HashData(Encoding.UTF8.GetBytes(toSign)));
+        return ($"{_settings.HlsBaseUrl.TrimEnd('/')}/live/{md5}/{epoch}/{streamId}/index.m3u8", expires);
+    }
+
     // nginx-style base64url: standard base64, '+'→'-', '/'→'_', no '=' padding.
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');

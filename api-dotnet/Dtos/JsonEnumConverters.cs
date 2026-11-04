@@ -45,25 +45,13 @@ public class SessionStatusJsonConverter : JsonConverter<SessionStatus>
         });
 }
 
-public class VisionJobStatusJsonConverter : JsonConverter<VisionJobStatus>
+public class LiveStreamStatusJsonConverter : JsonConverter<LiveStreamStatus>
 {
-    public override VisionJobStatus Read(ref Utf8JsonReader reader, Type t, JsonSerializerOptions o)
-        => reader.GetString() switch
-        {
-            "running" => VisionJobStatus.Running,
-            "done" => VisionJobStatus.Done,
-            "failed" => VisionJobStatus.Failed,
-            _ => VisionJobStatus.Pending,
-        };
+    public override LiveStreamStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        EnumMap.LiveFromDb(reader.GetString() ?? "");
 
-    public override void Write(Utf8JsonWriter writer, VisionJobStatus value, JsonSerializerOptions o)
-        => writer.WriteStringValue(value switch
-        {
-            VisionJobStatus.Running => "running",
-            VisionJobStatus.Done => "done",
-            VisionJobStatus.Failed => "failed",
-            _ => "pending",
-        });
+    public override void Write(Utf8JsonWriter writer, LiveStreamStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(EnumMap.LiveToDb(value));
 }
 
 public class HighlightStatusJsonConverter : JsonConverter<HighlightStatus>

@@ -54,16 +54,22 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("subtitle");
 
+                    b.Property<int>("TenantId")
+                        .HasColumnType("integer")
+                        .HasColumnName("tenant_id");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId");
+
                     b.ToTable("analysissession", (string)null);
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.Clip", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.ApiKey", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -76,34 +82,23 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<double>("EndSeconds")
-                        .HasColumnType("double precision")
-                        .HasColumnName("end_seconds");
-
-                    b.Property<int>("EventId")
-                        .HasColumnType("integer")
-                        .HasColumnName("event_id");
-
-                    b.Property<string>("Filename")
+                    b.Property<string>("KeyHash")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("filename");
+                        .HasColumnName("key_hash");
 
-                    b.Property<double>("StartSeconds")
-                        .HasColumnType("double precision")
-                        .HasColumnName("start_seconds");
-
-                    b.Property<int>("VideoId")
+                    b.Property<int>("TenantId")
                         .HasColumnType("integer")
-                        .HasColumnName("video_id");
+                        .HasColumnName("tenant_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("EventId");
+                    b.HasIndex("KeyHash")
+                        .IsUnique();
 
-                    b.HasIndex("VideoId");
+                    b.HasIndex("TenantId");
 
-                    b.ToTable("clip", (string)null);
+                    b.ToTable("apikey", (string)null);
                 });
 
             modelBuilder.Entity("PitchWise.Data.Models.Event", b =>
@@ -247,46 +242,54 @@ namespace PitchWise.Data.Migrations
                     b.ToTable("highlight", (string)null);
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.LiveSession", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.LiveStream", b =>
                 {
-                    b.Property<string>("Id")
-                        .HasColumnType("text")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("HlsUrl")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("hls_url");
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
 
-                    b.Property<string>("SourceUrl")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("source_url");
+                        .HasColumnName("name");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("status");
 
-                    b.Property<DateTime?>("StoppedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("stopped_at");
-
-                    b.Property<string>("WsUrl")
+                    b.Property<string>("StreamKeyHash")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("ws_url");
+                        .HasColumnName("stream_key_hash");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("integer")
+                        .HasColumnName("tenant_id");
 
                     b.HasKey("Id");
 
-                    b.ToTable("livesession", (string)null);
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("livestream", (string)null);
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.MatchStats", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.Tenant", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -295,69 +298,18 @@ namespace PitchWise.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("AnalysisId")
-                        .HasColumnType("integer")
-                        .HasColumnName("analysis_id");
-
-                    b.Property<double>("ControlledSeconds")
-                        .HasColumnType("double precision")
-                        .HasColumnName("controlled_seconds");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<double>("LooseSeconds")
-                        .HasColumnType("double precision")
-                        .HasColumnName("loose_seconds");
-
-                    b.Property<double>("PassAccuracyPctA")
-                        .HasColumnType("double precision")
-                        .HasColumnName("pass_accuracy_pct_a");
-
-                    b.Property<double>("PassAccuracyPctB")
-                        .HasColumnType("double precision")
-                        .HasColumnName("pass_accuracy_pct_b");
-
-                    b.Property<int>("PassesA")
-                        .HasColumnType("integer")
-                        .HasColumnName("passes_a");
-
-                    b.Property<int>("PassesB")
-                        .HasColumnType("integer")
-                        .HasColumnName("passes_b");
-
-                    b.Property<double>("PossessionPctA")
-                        .HasColumnType("double precision")
-                        .HasColumnName("possession_pct_a");
-
-                    b.Property<double>("PossessionPctB")
-                        .HasColumnType("double precision")
-                        .HasColumnName("possession_pct_b");
-
-                    b.Property<string>("TimeOnPitchJson")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("time_on_pitch_json");
-
-                    b.Property<int>("TurnoversA")
-                        .HasColumnType("integer")
-                        .HasColumnName("turnovers_a");
-
-                    b.Property<int>("TurnoversB")
-                        .HasColumnType("integer")
-                        .HasColumnName("turnovers_b");
-
-                    b.Property<int>("VideoId")
-                        .HasColumnType("integer")
-                        .HasColumnName("video_id");
+                        .HasColumnName("name");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("VideoId")
-                        .IsUnique();
-
-                    b.ToTable("matchstats", (string)null);
+                    b.ToTable("tenant", (string)null);
                 });
 
             modelBuilder.Entity("PitchWise.Data.Models.Video", b =>
@@ -372,10 +324,6 @@ namespace PitchWise.Data.Migrations
                     b.Property<int>("AnalysisId")
                         .HasColumnType("integer")
                         .HasColumnName("analysis_id");
-
-                    b.Property<string>("AnnotatedFilename")
-                        .HasColumnType("text")
-                        .HasColumnName("annotated_filename");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -410,45 +358,31 @@ namespace PitchWise.Data.Migrations
                     b.ToTable("video", (string)null);
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.VisionJob", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.AnalysisSession", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                    b.HasOne("PitchWise.Data.Models.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+            modelBuilder.Entity("PitchWise.Data.Models.ApiKey", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Error")
-                        .HasColumnType("text")
-                        .HasColumnName("error");
-
-                    b.Property<DateTime?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("finished_at");
-
-                    b.Property<double>("Progress")
-                        .HasColumnType("double precision")
-                        .HasColumnName("progress");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<int>("VideoId")
-                        .HasColumnType("integer")
-                        .HasColumnName("video_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("VideoId");
-
-                    b.ToTable("visionjob", (string)null);
+            modelBuilder.Entity("PitchWise.Data.Models.LiveStream", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
