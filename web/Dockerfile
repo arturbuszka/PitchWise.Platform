@@ -7,10 +7,6 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Next bakes rewrites() at build time (output: standalone), so the proxy destination
-# must be known here. Compose passes http://api:8000; default keeps host dev working.
-ARG API_INTERNAL_URL=http://localhost:8000
-ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 RUN npm run build
 
 FROM node:20-alpine AS runner

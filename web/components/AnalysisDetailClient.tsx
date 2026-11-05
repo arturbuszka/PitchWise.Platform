@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AnalysisDetail,
@@ -9,18 +8,13 @@ import {
   EventType,
   EventTypeConfig,
   Highlight,
-  MatchStats,
   VideoItem,
-  VisionJob,
   api,
   formatTime,
 } from "@/lib/api";
-import { Chat } from "./Chat";
 import { QuickActions } from "./QuickActions";
 import { EventResultsPanel } from "./EventResultsPanel";
-import { MatchStatsPanel } from "./MatchStatsPanel";
 import { HlsPlayer } from "./HlsPlayer";
-import { AnnotatedHlsPlayer } from "./AnnotatedHlsPlayer";
 
 const SPORT_LABELS: Record<string, string> = {
   football: "⚽ Football",
@@ -37,15 +31,12 @@ export function AnalysisDetailClient({
   events: AnalysisEvent[];
   eventTypes: EventTypeConfig[];
 }) {
-  const router = useRouter();
   const [videos, setVideos] = useState<VideoItem[]>(analysis.videos);
   const [events, setEvents] = useState<AnalysisEvent[]>(initialEvents);
   const [activeVideoId, setActiveVideoId] = useState<number | null>(
     analysis.videos[0]?.id ?? null
   );
   const [activeFilters, setActiveFilters] = useState<Set<EventType>>(new Set());
-  const [job, setJob] = useState<VisionJob | null>(null);
-  const [stats, setStats] = useState<MatchStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -61,9 +52,6 @@ export function AnalysisDetailClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeVideo = videos.find((v) => v.id === activeVideoId) ?? null;
-  // Annotated playback is available only for the video the current job belongs to.
-  const annotatedReady =
-    !!job && job.video_id === activeVideoId && job.annotated_ready;
 
   function seekVideo(seconds: number) {
     if (videoRef.current) {
@@ -93,6 +81,7 @@ export function AnalysisDetailClient({
   async function handleGenerateHighlight() {
     if (selectedEvents.size === 0) return;
     setBusy(true);
+    setHighlightHlsUrl(null);
     setShareUrl(null);
     setShareCopied(false);
     try {
@@ -120,57 +109,20 @@ export function AnalysisDetailClient({
     }
   }
 
-  async function refreshEvents() {
-    const fresh = await api.analyses.events.list(analysis.id).catch(() => null);
-    if (fresh) setEvents(fresh);
+  // Marks the moment the player is at. A highlight is cut around the events selected here.
+  async function handleTagEvent() {
+    if (activeVideoId == null) return;
+    const seconds = videoRef.current?.currentTime ?? 0;
+    const created = await api.analyses.events
+      .create(analysis.id, {
+        timestamp_seconds: seconds,
+        type: "manual",
+        label: `Tagged at ${formatTime(seconds)}`,
+        video_id: activeVideoId,
+      })
+      .catch(() => null);
+    if (created) setEvents((prev) => [...prev, created].sort((x, y) => x.timestamp_seconds - y.timestamp_seconds));
   }
-
-  // Hydrate job status when the active video changes (e.g. on reload) so a previously
-  // analysed video shows its annotated playback and segment progress without a re-run.
-  useEffect(() => {
-    if (activeVideoId == null) {
-      setJob(null);
-      return;
-    }
-    let cancelled = false;
-    api.analyses.videos.status(analysis.id, activeVideoId).then((s) => {
-      if (!cancelled) setJob(s);
-    });
-    // Match stats: present once analysis has produced a row (404 → null before then).
-    setStats(null);
-    api.analyses.videos.stats(analysis.id, activeVideoId).then((s) => {
-      if (!cancelled) setStats(s);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVideoId, analysis.id]);
-
-  // Poll the status of the active job. With segmented analysis we refresh the events
-  // timeline on every tick so it fills in per segment instead of only at the end.
-  useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") return;
-    const interval = setInterval(async () => {
-      if (activeVideoId == null) return;
-      const updated = await api.analyses.videos
-        .status(analysis.id, activeVideoId)
-        .catch(() => null);
-      if (updated) setJob(updated);
-      // A finished segment means new events are queryable — pull them in live.
-      await refreshEvents();
-      if (updated?.status === "done") {
-        clearInterval(interval);
-        // Analysis finished — the stats row now exists; pull it in.
-        api.analyses.videos.stats(analysis.id, activeVideoId).then(setStats).catch(() => {});
-        router.refresh();
-      } else if (updated?.status === "failed") {
-        clearInterval(interval);
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, activeVideoId, analysis.id]);
 
   // Poll the highlight render job until it finishes
   useEffect(() => {
@@ -190,10 +142,7 @@ export function AnalysisDetailClient({
 
   // Once the highlight is done, fetch its signed HLS URL (edge-served). null → MP4 fallback.
   useEffect(() => {
-    if (highlight?.status !== "done") {
-      setHighlightHlsUrl(null);
-      return;
-    }
+    if (highlight?.status !== "done") return;
     let cancelled = false;
     api.analyses.highlights.hlsUrl(analysis.id, highlight.id).then((h) => {
       if (!cancelled) setHighlightHlsUrl(h?.url ?? null);
@@ -223,37 +172,6 @@ export function AnalysisDetailClient({
       setUploadPct(null);
     }
   }
-
-  async function handleAnalyze() {
-    if (activeVideoId == null) return;
-    setBusy(true);
-    try {
-      const j = await api.analyses.videos.analyze(analysis.id, activeVideoId);
-      setJob(j);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleCancelAnalysis() {
-    if (activeVideoId == null) return;
-    setBusy(true);
-    try {
-      const j = await api.analyses.videos.cancel(analysis.id, activeVideoId);
-      setJob(j); // failed/cancelled → "Run analysis" re-enabled, dedup unblocked
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const analyzing = job?.status === "running" || job?.status === "pending";
-
-  const jobLabel: Record<string, string> = {
-    pending: "Queued…",
-    running: "Analyzing…",
-    done: "Done",
-    failed: "Analysis error",
-  };
 
   return (
     <div className="h-screen flex overflow-hidden bg-[#eceef1]">
@@ -379,23 +297,13 @@ export function AnalysisDetailClient({
             )}
           </span>
           <div className="flex items-center gap-3">
-            {job && (
-              <span
-                className={`text-[12px] font-semibold ${
-                  job.status === "done"
-                    ? "text-green-600"
-                    : job.status === "failed"
-                      ? "text-red-500"
-                      : "text-[#2f5fe0]"
-                }`}
-              >
-                {jobLabel[job.status]}
-                {job.status === "running" && job.progress > 0
-                  ? ` ${Math.round(job.progress * 100)}%`
-                  : ""}
-                {annotatedReady ? " · ▦ boxes" : ""}
-              </span>
-            )}
+            <button
+              onClick={handleTagEvent}
+              disabled={activeVideoId == null}
+              className="bg-[#2f5fe0] hover:bg-[#2451c7] disabled:opacity-50 text-white rounded-[8px] px-3 py-1.5 text-[13px] font-semibold transition-colors"
+            >
+              + Tag event
+            </button>
             <button
               onClick={handleGenerateHighlight}
               disabled={busy || selectedEvents.size === 0 || highlight?.status === "running" || highlight?.status === "pending"}
@@ -404,23 +312,6 @@ export function AnalysisDetailClient({
             >
               ✦ Generate highlight{selectedEvents.size > 0 ? ` (${selectedEvents.size})` : ""}
             </button>
-            {analyzing ? (
-              <button
-                onClick={handleCancelAnalysis}
-                disabled={busy || activeVideoId == null}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-[8px] px-3 py-1.5 text-[12px] font-semibold transition-colors"
-              >
-                ■ Stop
-              </button>
-            ) : (
-              <button
-                onClick={handleAnalyze}
-                disabled={busy || activeVideoId == null}
-                className="bg-[#2f5fe0] hover:bg-[#2451c7] disabled:opacity-50 text-white rounded-[8px] px-3 py-1.5 text-[12px] font-semibold transition-colors"
-              >
-                Run analysis
-              </button>
-            )}
           </div>
         </div>
 
@@ -432,27 +323,14 @@ export function AnalysisDetailClient({
                 <div className="w-full h-64 flex items-center justify-center text-[#9aa0a8] text-sm">
                   Attach a video to get started
                 </div>
-              ) : annotatedReady ? (
-                // Only ever show the annotated (boxes burned-in) video — a progressive HLS
-                // playlist that grows as analysis runs. Until it exists, a placeholder.
-                <AnnotatedHlsPlayer
-                  key={`${activeVideoId}-annotated`}
-                  videoRef={videoRef}
-                  hlsUrl={api.analyses.videos.annotatedHlsUrl(analysis.id, activeVideoId)}
+              ) : (
+                <video
+                  key={activeVideoId}
+                  ref={videoRef}
+                  src={api.analyses.videos.streamUrl(analysis.id, activeVideoId)}
                   controls
                   className="w-full max-h-[420px] object-contain bg-black"
                 />
-              ) : (
-                <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-[#9aa0a8] text-sm">
-                  <span className="text-3xl">🎬</span>
-                  <span>
-                    {job?.status === "running" || job?.status === "pending"
-                      ? "Analyzing… detections will appear here"
-                      : job?.status === "failed"
-                        ? "Analysis failed"
-                        : "Run analysis to see detections"}
-                  </span>
-                </div>
               )}
             </div>
           </div>
@@ -535,11 +413,6 @@ export function AnalysisDetailClient({
             <QuickActions active={activeFilters} onToggle={toggleFilter} />
           </div>
 
-          {/* Match statistics */}
-          <div className="mb-4">
-            <MatchStatsPanel stats={stats} />
-          </div>
-
           {/* Results */}
           <EventResultsPanel
             events={events}
@@ -552,10 +425,6 @@ export function AnalysisDetailClient({
         </div>
       </main>
 
-      {/* ===== RIGHT CHAT ===== */}
-      <aside className="w-[316px] shrink-0 flex flex-col overflow-hidden border-l border-[#eaecf0]">
-        <Chat analysisId={analysis.id} onSeek={seekVideo} />
-      </aside>
     </div>
   );
 }

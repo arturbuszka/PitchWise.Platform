@@ -9,14 +9,6 @@ public enum SessionStatus
     Done,
 }
 
-public enum VisionJobStatus
-{
-    Pending,
-    Running,
-    Done,
-    Failed,
-}
-
 public enum EventType
 {
     Goal,
@@ -42,4 +34,12 @@ public enum HighlightStatus
     Running,
     Done,
     Failed,
+}
+
+// Idle: waiting for the encoder, which may reconnect. Ended: closed for good.
+public enum LiveStreamStatus
+{
+    Idle,
+    Live,
+    Ended,
 }

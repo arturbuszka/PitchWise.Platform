@@ -1,42 +1,27 @@
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using PitchWise.Data.Config;
 using PitchWise.Data;
+using PitchWise.Api.Auth;
 using PitchWise.Api.Dtos;
 using PitchWise.Data.Models;
-using PitchWise.Api.Services;
 
 namespace PitchWise.Api.Controllers;
 
-// Analysis sessions: CRUD, events and chat (SSE).
+// Analysis sessions: CRUD and events.
 [ApiController]
 [Route("api/analyses")]
 public class AnalysesController : ControllerBase
 {
-    private const string ChatSystem =
-        "You are an analytics assistant for a coaching staff. " +
-        "Answer concisely and to the point in English, based on the provided " +
-        "analysis session context (detected and tagged events). " +
-        "When data is missing, say so directly.";
-
     private readonly AppDbContext _db;
-    private readonly AppSettings _settings;
-    private readonly LlmClient _llm;
 
-    public AnalysesController(AppDbContext db, AppSettings settings, LlmClient llm)
-    {
-        _db = db;
-        _settings = settings;
-        _llm = llm;
-    }
+    public AnalysesController(AppDbContext db) => _db = db;
 
     // ---- Analyses CRUD ----
 
     [HttpGet]
     public async Task<List<AnalysisListItem>> ListAnalyses([FromQuery] string? sport, [FromQuery] string? search)
     {
-        var q = _db.AnalysisSessions.AsQueryable();
+        var q = _db.AnalysisSessions.Where(a => a.TenantId == User.TenantId());
         if (!string.IsNullOrEmpty(sport))
             q = q.Where(a => a.Sport == sport);
         if (!string.IsNullOrEmpty(search))
@@ -58,6 +43,7 @@ public class AnalysesController : ControllerBase
             Name = payload.Name,
             Subtitle = payload.Subtitle,
             Sport = payload.Sport,
+            TenantId = User.TenantId(),
         };
         _db.AnalysisSessions.Add(obj);
         await _db.SaveChangesAsync();
@@ -96,10 +82,7 @@ public class AnalysesController : ControllerBase
             q = q.Where(e => e.Type == type);
         var events = await q.OrderBy(e => e.TimestampSeconds).ToListAsync();
 
-        var result = new List<EventOut>();
-        foreach (var e in events)
-            result.Add(await EventToOut(e));
-        return result;
+        return events.Select(EventToOut).ToList();
     }
 
     [HttpPost("{analysisId:int}/events")]
@@ -132,7 +115,7 @@ public class AnalysesController : ControllerBase
         _db.Events.Add(ev);
         session.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return await EventToOut(ev);
+        return EventToOut(ev);
     }
 
     [HttpDelete("{analysisId:int}/events/{eventId:int}")]
@@ -142,111 +125,15 @@ public class AnalysesController : ControllerBase
         if (ev is null || ev.AnalysisId != analysisId)
             return NotFound(new { detail = "Event not found" });
 
-        var clips = await _db.Clips.Where(c => c.EventId == eventId).ToListAsync();
-        foreach (var clip in clips)
-        {
-            var path = Path.Combine(_settings.ClipsDir, clip.Filename);
-            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
-            _db.Clips.Remove(clip);
-        }
         _db.Events.Remove(ev);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
 
-    // ---- Chat (SSE streaming) ----
-
-    [HttpPost("{analysisId:int}/chat")]
-    public async Task Chat(int analysisId, [FromBody] ChatRequest req)
-    {
-        var session = await _db.AnalysisSessions.FindAsync(analysisId);
-        if (session is null)
-        {
-            Response.StatusCode = 404;
-            await Response.WriteAsJsonAsync(new { detail = "Analysis not found" });
-            return;
-        }
-
-        var context = await BuildAnalysisContext(analysisId);
-        var system = string.IsNullOrEmpty(context)
-            ? ChatSystem
-            : $"{ChatSystem}\n\nAnalysis context:\n{context}";
-
-        var messages = req.Messages.Select(m => (m.Role, m.Content)).ToList();
-
-        Response.ContentType = "text/event-stream";
-        var ct = HttpContext.RequestAborted;
-
-        try
-        {
-            await foreach (var delta in _llm.StreamChatAsync(messages, system, ct))
-            {
-                await Response.WriteAsync($"data: {delta}\n\n", ct);
-                await Response.Body.FlushAsync(ct);
-            }
-        }
-        catch (Exception exc)
-        {
-            await Response.WriteAsync($"data: [LLM error: {exc.GetType().Name}]\n\n", ct);
-        }
-        await Response.WriteAsync("data: [DONE]\n\n", ct);
-        await Response.Body.FlushAsync(ct);
-    }
-
     // ---- Helpers ----
 
-    private async Task<EventOut> EventToOut(Event ev)
-    {
-        ClipOut? clip = null;
-        var clipRow = await _db.Clips.FirstOrDefaultAsync(c => c.EventId == ev.Id);
-        if (clipRow is not null)
-            clip = new ClipOut(clipRow.Id, clipRow.EventId, clipRow.VideoId,
-                clipRow.Filename, clipRow.StartSeconds, clipRow.EndSeconds);
-
-        return new EventOut(
-            ev.Id, ev.AnalysisId, ev.VideoId, ev.Type, ev.Source,
-            ev.TimestampSeconds, ev.Confidence, ev.Label, ev.Note,
-            ev.PlayerNumber, ev.PlayerName, ev.AssistNumber, ev.AssistName, clip);
-    }
-
-    private async Task<string> BuildAnalysisContext(int analysisId)
-    {
-        var session = await _db.AnalysisSessions.FindAsync(analysisId);
-        if (session is null) return "";
-
-        var events = await _db.Events
-            .Where(e => e.AnalysisId == analysisId)
-            .OrderBy(e => e.TimestampSeconds)
-            .ToListAsync();
-
-        var lines = new List<string>();
-        var head = $"Analysis: {session.Name} ({session.Sport}).";
-        if (!string.IsNullOrEmpty(session.Subtitle)) head += $" {session.Subtitle}";
-        lines.Add(head);
-
-        if (events.Count > 0)
-        {
-            lines.Add($"Events ({events.Count}):");
-            foreach (var e in events)
-            {
-                var total = (int)e.TimestampSeconds;
-                var mm = total / 60;
-                var ss = total % 60;
-                var conf = e.Confidence is not null ? $", confidence {e.Confidence.Value:P0}" : "";
-                var player = "";
-                if (!string.IsNullOrEmpty(e.PlayerName))
-                    player = e.PlayerNumber is not null ? $" #{e.PlayerNumber} {e.PlayerName}" : $" {e.PlayerName}";
-                var assist = "";
-                if (!string.IsNullOrEmpty(e.AssistName))
-                    assist = e.AssistNumber is not null ? $" (assist #{e.AssistNumber} {e.AssistName})" : $" (assist {e.AssistName})";
-                var note = !string.IsNullOrEmpty(e.Note) ? $" — {e.Note}" : "";
-                lines.Add($"- {mm:D2}:{ss:D2} {EventTypeMap.ToDb(e.Type)} ({(e.Source == EventSource.Auto ? "auto" : "manual")}{conf}){player}{assist}{note}".TrimEnd());
-            }
-        }
-        else
-        {
-            lines.Add("No detected/tagged events.");
-        }
-        return string.Join("\n", lines);
-    }
+    private static EventOut EventToOut(Event ev) => new(
+        ev.Id, ev.AnalysisId, ev.VideoId, ev.Type, ev.Source,
+        ev.TimestampSeconds, ev.Confidence, ev.Label, ev.Note,
+        ev.PlayerNumber, ev.PlayerName, ev.AssistNumber, ev.AssistName);
 }

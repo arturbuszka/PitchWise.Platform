@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using PitchWise.Api.Auth;
 using PitchWise.Data.Config;
 using PitchWise.Data;
 using PitchWise.Api.Dtos;
@@ -14,19 +17,18 @@ builder.Configuration.GetSection("App").Bind(settings);
 settings.StorageDir = Environment.GetEnvironmentVariable("STORAGE_DIR") ?? settings.StorageDir;
 settings.DatabaseConnection = Environment.GetEnvironmentVariable("DATABASE_CONNECTION") ?? settings.DatabaseConnection;
 settings.RedisUrl = Environment.GetEnvironmentVariable("REDIS_URL") ?? settings.RedisUrl;
-settings.LlmProvider = Environment.GetEnvironmentVariable("LLM_PROVIDER") ?? settings.LlmProvider;
-settings.LlmBaseUrl = Environment.GetEnvironmentVariable("LLM_BASE_URL") ?? settings.LlmBaseUrl;
-settings.LlmApiKey = Environment.GetEnvironmentVariable("LLM_API_KEY") ?? settings.LlmApiKey;
-settings.LlmModel = Environment.GetEnvironmentVariable("LLM_MODEL") ?? settings.LlmModel;
 settings.WebOrigin = Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? settings.WebOrigin;
 settings.WebOriginAlt = Environment.GetEnvironmentVariable("WEB_ORIGIN_ALT") ?? settings.WebOriginAlt;
-settings.VisionQueue = Environment.GetEnvironmentVariable("VISION_QUEUE") ?? settings.VisionQueue;
 settings.HighlightQueue = Environment.GetEnvironmentVariable("HIGHLIGHT_QUEUE") ?? settings.HighlightQueue;
 settings.HlsBaseUrl = Environment.GetEnvironmentVariable("HLS_BASE_URL") ?? settings.HlsBaseUrl;
 settings.HlsSigningSecret = Environment.GetEnvironmentVariable("HLS_SIGNING_SECRET") ?? settings.HlsSigningSecret;
 if (int.TryParse(Environment.GetEnvironmentVariable("HLS_LINK_TTL_SECONDS"), out var hlsTtl))
     settings.HlsLinkTtlSeconds = hlsTtl;
-settings.LiveWorkerUrl = Environment.GetEnvironmentVariable("LIVE_WORKER_URL") ?? settings.LiveWorkerUrl;
+settings.AdminToken = Environment.GetEnvironmentVariable("ADMIN_TOKEN") ?? settings.AdminToken;
+settings.BootstrapApiKey = Environment.GetEnvironmentVariable("BOOTSTRAP_API_KEY") ?? settings.BootstrapApiKey;
+settings.RtmpIngestUrl = Environment.GetEnvironmentVariable("RTMP_INGEST_URL") ?? settings.RtmpIngestUrl;
+settings.MediaMtxApiUrl = Environment.GetEnvironmentVariable("MEDIAMTX_API_URL") ?? settings.MediaMtxApiUrl;
+settings.MediaMtxAuthSecret = Environment.GetEnvironmentVariable("MEDIAMTX_AUTH_SECRET") ?? settings.MediaMtxAuthSecret;
 settings.EnsureDirs();
 builder.Services.AddSingleton(settings);
 
@@ -36,12 +38,23 @@ builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(settings.Databa
 // --- Redis ---
 builder.Services.AddSingleton<IConnectionMultiplexer>(
     _ => ConnectionMultiplexer.Connect(RedisConfig(settings.RedisUrl)));
-builder.Services.AddSingleton<VisionQueue>();
 builder.Services.AddSingleton<HighlightQueue>();
 builder.Services.AddSingleton<HlsSigner>();
 
-// --- LLM ---
-builder.Services.AddHttpClient<LlmClient>(c => c.Timeout = TimeSpan.FromSeconds(120));
+// --- Auth: every endpoint needs an API key unless it opts out with [AllowAnonymous] ---
+builder.Services.AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null);
+builder.Services.AddAuthorization(o => o.FallbackPolicy =
+    new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+
+// --- Live ingest ---
+builder.Services.AddHttpClient<IMediaMtxClient, MediaMtxClient>(c =>
+{
+    c.BaseAddress = new Uri(settings.MediaMtxApiUrl);
+    c.Timeout = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddScoped<LiveStreamSync>();
+builder.Services.AddHostedService<LiveStreamMonitor>();
 
 // --- Full match recordings are large, so uploads have no size limit ---
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
@@ -52,13 +65,13 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = null);
 
 // --- JSON: snake_case, enums as lower-case strings ---
-builder.Services.AddControllers().AddJsonOptions(o =>
+builder.Services.AddControllers(o => o.Filters.Add<AnalysisAccessFilter>()).AddJsonOptions(o =>
 {
     o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower;
     o.JsonSerializerOptions.Converters.Add(new EventTypeJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new EventSourceJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SessionStatusJsonConverter());
-    o.JsonSerializerOptions.Converters.Add(new VisionJobStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new LiveStreamStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new HighlightStatusJsonConverter());
 });
 
@@ -73,10 +86,16 @@ var app = builder.Build();
 
 // The API owns the schema; the worker only reads and writes it.
 using (var scope = app.Services.CreateScope())
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+    await TenantBootstrap.EnsureAsync(db, settings.BootstrapApiKey);
+}
 
 app.UseCors();
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 app.MapControllers();
 app.Run();
 

@@ -11,13 +11,12 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<AnalysisSession> AnalysisSessions => Set<AnalysisSession>();
-    public DbSet<LiveSession> LiveSessions => Set<LiveSession>();
     public DbSet<Video> Videos => Set<Video>();
-    public DbSet<VisionJob> VisionJobs => Set<VisionJob>();
     public DbSet<Event> Events => Set<Event>();
-    public DbSet<MatchStats> MatchStats => Set<MatchStats>();
-    public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Highlight> Highlights => Set<Highlight>();
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<LiveStream> LiveStreams => Set<LiveStream>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -26,8 +25,8 @@ public class AppDbContext : DbContext
         var sessionStatus = new ValueConverter<SessionStatus, string>(
             v => EnumMap.SessionToDb(v), v => EnumMap.SessionFromDb(v));
 
-        var jobStatus = new ValueConverter<VisionJobStatus, string>(
-            v => EnumMap.JobToDb(v), v => EnumMap.JobFromDb(v));
+        var liveStatus = new ValueConverter<LiveStreamStatus, string>(
+            v => EnumMap.LiveToDb(v), v => EnumMap.LiveFromDb(v));
 
         var eventType = new ValueConverter<EventType, string>(
             v => EventTypeMap.ToDb(v), v => EventTypeMap.FromDb(v));
@@ -43,6 +42,9 @@ public class AppDbContext : DbContext
             e.ToTable("analysissession");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.HasIndex(x => x.TenantId);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
             e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.Subtitle).HasColumnName("subtitle");
             e.Property(x => x.Sport).HasColumnName("sport");
@@ -62,23 +64,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.DurationSeconds).HasColumnName("duration_seconds");
             e.Property(x => x.Fps).HasColumnName("fps");
             e.Property(x => x.Order).HasColumnName("order");
-            e.Property(x => x.AnnotatedFilename).HasColumnName("annotated_filename");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasIndex(x => x.AnalysisId);
-        });
-
-        b.Entity<VisionJob>(e =>
-        {
-            e.ToTable("visionjob");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.VideoId).HasColumnName("video_id");
-            e.Property(x => x.Status).HasColumnName("status").HasConversion(jobStatus);
-            e.Property(x => x.Progress).HasColumnName("progress");
-            e.Property(x => x.Error).HasColumnName("error");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.FinishedAt).HasColumnName("finished_at");
-            e.HasIndex(x => x.VideoId);
         });
 
         b.Entity<Event>(e =>
@@ -103,54 +90,42 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.VideoId);
         });
 
-        b.Entity<MatchStats>(e =>
+        b.Entity<Tenant>(e =>
         {
-            e.ToTable("matchstats");
+            e.ToTable("tenant");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.VideoId).HasColumnName("video_id");
-            e.Property(x => x.AnalysisId).HasColumnName("analysis_id");
-            e.Property(x => x.PossessionPctA).HasColumnName("possession_pct_a");
-            e.Property(x => x.PossessionPctB).HasColumnName("possession_pct_b");
-            e.Property(x => x.ControlledSeconds).HasColumnName("controlled_seconds");
-            e.Property(x => x.LooseSeconds).HasColumnName("loose_seconds");
-            e.Property(x => x.PassesA).HasColumnName("passes_a");
-            e.Property(x => x.PassesB).HasColumnName("passes_b");
-            e.Property(x => x.TurnoversA).HasColumnName("turnovers_a");
-            e.Property(x => x.TurnoversB).HasColumnName("turnovers_b");
-            e.Property(x => x.PassAccuracyPctA).HasColumnName("pass_accuracy_pct_a");
-            e.Property(x => x.PassAccuracyPctB).HasColumnName("pass_accuracy_pct_b");
-            e.Property(x => x.TimeOnPitchJson).HasColumnName("time_on_pitch_json");
+            e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.HasIndex(x => x.VideoId).IsUnique();
         });
 
-        b.Entity<Clip>(e =>
+        b.Entity<ApiKey>(e =>
         {
-            e.ToTable("clip");
+            e.ToTable("apikey");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.EventId).HasColumnName("event_id");
-            e.Property(x => x.VideoId).HasColumnName("video_id");
-            e.Property(x => x.Filename).HasColumnName("filename");
-            e.Property(x => x.StartSeconds).HasColumnName("start_seconds");
-            e.Property(x => x.EndSeconds).HasColumnName("end_seconds");
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.KeyHash).HasColumnName("key_hash");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.HasIndex(x => x.EventId);
-            e.HasIndex(x => x.VideoId);
+            e.HasIndex(x => x.KeyHash).IsUnique();
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
         });
 
-        b.Entity<LiveSession>(e =>
+        b.Entity<LiveStream>(e =>
         {
-            e.ToTable("livesession");
+            e.ToTable("livestream");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.SourceUrl).HasColumnName("source_url");
-            e.Property(x => x.Status).HasColumnName("status");
-            e.Property(x => x.WsUrl).HasColumnName("ws_url");
-            e.Property(x => x.HlsUrl).HasColumnName("hls_url");
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.StreamKeyHash).HasColumnName("stream_key_hash");
+            e.Property(x => x.Status).HasColumnName("status").HasConversion(liveStatus);
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.StoppedAt).HasColumnName("stopped_at");
+            e.Property(x => x.StartedAt).HasColumnName("started_at");
+            e.Property(x => x.EndedAt).HasColumnName("ended_at");
+            e.HasIndex(x => x.TenantId);
+            e.HasIndex(x => x.Status);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
         });
 
         b.Entity<Highlight>(e =>
@@ -193,20 +168,18 @@ public static class EnumMap
         _ => SessionStatus.Draft,
     };
 
-    public static string JobToDb(VisionJobStatus v) => v switch
+    public static string LiveToDb(LiveStreamStatus v) => v switch
     {
-        VisionJobStatus.Running => "running",
-        VisionJobStatus.Done => "done",
-        VisionJobStatus.Failed => "failed",
-        _ => "pending",
+        LiveStreamStatus.Live => "live",
+        LiveStreamStatus.Ended => "ended",
+        _ => "idle",
     };
 
-    public static VisionJobStatus JobFromDb(string v) => v switch
+    public static LiveStreamStatus LiveFromDb(string v) => v switch
     {
-        "running" => VisionJobStatus.Running,
-        "done" => VisionJobStatus.Done,
-        "failed" => VisionJobStatus.Failed,
-        _ => VisionJobStatus.Pending,
+        "live" => LiveStreamStatus.Live,
+        "ended" => LiveStreamStatus.Ended,
+        _ => LiveStreamStatus.Idle,
     };
 
     public static string SourceToDb(EventSource v) => v == EventSource.Auto ? "auto" : "manual";

@@ -1,0 +1,31 @@
+# RTMP in, HLS out. Only publishing RTMP and the API call below are open to the outside: the
+# HLS port is reached through the nginx edge, and the control API only from inside the deployment.
+logLevel: info
+
+authMethod: http
+# The address, with its secret, comes from MTX_AUTHHTTPADDRESS in docker-compose.yml.
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+api: yes
+apiAddress: :9997
+
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: mpegts
+# Package as soon as the encoder connects, so the first viewer does not wait for a muxer to start.
+hlsAlwaysRemux: yes
+hlsSegmentCount: 7
+hlsSegmentDuration: 2s
+
+rtsp: no
+webrtc: no
+srt: no
+
+paths:
+  '~^live/[0-9a-f-]{36}$': {}

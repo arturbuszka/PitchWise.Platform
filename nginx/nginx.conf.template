@@ -1,7 +1,7 @@
 # PitchWise HLS edge — simulates a CDN: validates signed URLs and serves/caches
 # HLS segments so the application server (.NET) never touches video bytes.
 #
-# Only ${HLS_SIGNING_SECRET} is substituted at startup (NGINX_ENVSUBST_FILTER);
+# Only ${HLS_SIGNING_SECRET} and ${MEDIAMTX_CDN_SECRET} are substituted at startup (NGINX_ENVSUBST_FILTER);
 # nginx runtime vars like $uri, $arg_md5, $secure_link stay literal.
 #
 # Signature model:
@@ -25,10 +25,61 @@
 proxy_cache_path /var/cache/nginx/hls levels=1:2 keys_zone=hls:10m max_size=1g
                  inactive=10m use_temp_path=off;
 
+upstream mediamtx {
+    server mediamtx:8888;
+}
+
 # Public edge.
 server {
     listen 80;
     server_name _;
+
+    # Live: the signature sits in the path, so relative playlist and segment URLs inherit it and
+    # nothing has to be rewritten. The cache key leaves it out, so all viewers share each entry.
+    # Playlists change every couple of seconds. A one-second cache with a lock still means that
+    # any number of viewers cost the origin about one request per second.
+    location ~ "^/live/(?<live_md5>[^/]+)/(?<live_exp>[0-9]+)/(?<live_id>[0-9a-f-]{36})/(?<live_file>[A-Za-z0-9_.-]+\.m3u8)$" {
+        secure_link $live_md5,$live_exp;
+        secure_link_md5 "$secure_link_expires /live/$live_id/ ${HLS_SIGNING_SECRET}";
+        if ($secure_link = "")  { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        proxy_pass http://mediamtx/live/$live_id/$live_file;
+        # Tells MediaMTX this is a CDN, so it drops per-viewer sessions and the cache can be shared.
+        proxy_set_header Authorization "Bearer ${MEDIAMTX_CDN_SECRET}";
+        proxy_cache hls;
+        proxy_cache_valid 200 1s;
+        proxy_cache_lock on;
+        proxy_cache_key "live/$live_id/$live_file";
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        add_header X-Cache-Status $upstream_cache_status always;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    }
+
+    # Segments never change once written, so they can stay cached for as long as they are in use.
+    location ~ "^/live/(?<live_md5>[^/]+)/(?<live_exp>[0-9]+)/(?<live_id>[0-9a-f-]{36})/(?<live_file>[A-Za-z0-9_.-]+)$" {
+        secure_link $live_md5,$live_exp;
+        secure_link_md5 "$secure_link_expires /live/$live_id/ ${HLS_SIGNING_SECRET}";
+        if ($secure_link = "")  { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        proxy_pass http://mediamtx/live/$live_id/$live_file;
+        # Tells MediaMTX this is a CDN, so it drops per-viewer sessions and the cache can be shared.
+        proxy_set_header Authorization "Bearer ${MEDIAMTX_CDN_SECRET}";
+        proxy_cache hls;
+        proxy_cache_valid 200 5m;
+        proxy_cache_lock on;
+        proxy_cache_key "live/$live_id/$live_file";
+        proxy_ignore_headers Cache-Control Expires Set-Cookie;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        add_header X-Cache-Status $upstream_cache_status always;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    }
 
     # The manifest carries the signature in the query string (minted by the API).
     # Validate it, then rewrite the segment lines to carry the same signature so the

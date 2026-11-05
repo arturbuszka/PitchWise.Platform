@@ -7,15 +7,14 @@ using StackExchange.Redis;
 namespace PitchWise.Worker;
 
 /// <summary>
-/// BRPOP consumer loop over the vision and highlight Redis lists. The API only LPUSHes {job_id}/{highlight_id}; this worker
-/// pops and dispatches. Both queues are drained concurrently.
+/// Consumer loop over the highlight Redis list. The API only LPUSHes {highlight_id}; this worker
+/// pops and dispatches.
 /// </summary>
 public sealed class QueueWorker : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly AppSettings _appSettings;
     private readonly WorkerSettings _worker;
-    private readonly VisionRunner _vision;
     private readonly HighlightRunner _highlight;
     private readonly ILogger<QueueWorker> _log;
 
@@ -23,31 +22,23 @@ public sealed class QueueWorker : BackgroundService
         IConnectionMultiplexer redis,
         AppSettings appSettings,
         WorkerSettings worker,
-        VisionRunner vision,
         HighlightRunner highlight,
         ILogger<QueueWorker> log)
     {
         _redis = redis;
         _appSettings = appSettings;
         _worker = worker;
-        _vision = vision;
         _highlight = highlight;
         _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.LogInformation("Worker listening on {vision} and {highlight}",
-            _appSettings.VisionQueue, _appSettings.HighlightQueue);
+        _log.LogInformation("Worker listening on {highlight}", _appSettings.HighlightQueue);
 
-        Task vision = Consume(
-            _appSettings.VisionQueue, "job_id",
-            (id, ct) => _vision.RunAsync(id, ct), stoppingToken);
-        Task highlight = Consume(
+        await Consume(
             _appSettings.HighlightQueue, "highlight_id",
             (id, ct) => _highlight.RunAsync(id, ct), stoppingToken);
-
-        await Task.WhenAll(vision, highlight);
     }
 
     private async Task Consume(

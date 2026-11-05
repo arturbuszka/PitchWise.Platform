@@ -1,6 +1,12 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using PitchWise.Api.Services;
 using PitchWise.Data;
 using StackExchange.Redis;
 using Testcontainers.PostgreSql;
@@ -14,6 +20,9 @@ public sealed class ApiFixture : IAsyncLifetime
     public const string HlsSecret = "test-secret";
     public const string HlsBaseUrl = "http://edge.test";
     public const string HighlightQueue = "highlight_jobs_test";
+    public const string ApiKey = "test-api-key";
+    public const string AdminToken = "test-admin-token";
+    public const string MediaMtxSecret = "test-mediamtx-secret";
 
     private readonly PostgreSqlContainer _postgres =
         new PostgreSqlBuilder("docker.io/library/postgres:16").Build();
@@ -22,7 +31,9 @@ public sealed class ApiFixture : IAsyncLifetime
     private readonly string _storage = Path.Combine(Path.GetTempPath(), $"pitchwise-tests-{Guid.NewGuid():N}");
     private WebApplicationFactory<Program> _factory = null!;
 
+    /// <summary>Authenticated as the bootstrap tenant.</summary>
     public HttpClient Client { get; private set; } = null!;
+    public FakeMediaMtx MediaMtx { get; } = new();
     public IDatabase Redis { get; private set; } = null!;
 
     public async Task InitializeAsync()
@@ -36,10 +47,35 @@ public sealed class ApiFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("HLS_SIGNING_SECRET", HlsSecret);
         Environment.SetEnvironmentVariable("HLS_BASE_URL", HlsBaseUrl);
         Environment.SetEnvironmentVariable("HIGHLIGHT_QUEUE", HighlightQueue);
+        Environment.SetEnvironmentVariable("BOOTSTRAP_API_KEY", ApiKey);
+        Environment.SetEnvironmentVariable("ADMIN_TOKEN", AdminToken);
+        Environment.SetEnvironmentVariable("MEDIAMTX_AUTH_SECRET", MediaMtxSecret);
 
-        _factory = new WebApplicationFactory<Program>();
-        Client = _factory.CreateClient();
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IMediaMtxClient>();
+            services.AddSingleton<IMediaMtxClient>(MediaMtx);
+        }));
+        Client = CreateClient(ApiKey);
         Redis = _factory.Services.GetRequiredService<IConnectionMultiplexer>().GetDatabase();
+    }
+
+    public HttpClient CreateClient(string? apiKey = null)
+    {
+        var client = _factory.CreateClient();
+        if (apiKey is not null) client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+        return client;
+    }
+
+    /// <summary>Onboards another tenant through the admin API and returns a client for it.</summary>
+    public async Task<HttpClient> CreateTenantClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Token", AdminToken);
+        var response = await client.PostAsJsonAsync("/api/admin/tenants", new { name = "Other" });
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return CreateClient(body.GetProperty("api_key").GetString());
     }
 
     /// <summary>Changes data directly, for states only the worker can produce, such as a finished render.</summary>
@@ -56,6 +92,32 @@ public sealed class ApiFixture : IAsyncLifetime
         await _factory.DisposeAsync();
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
         if (Directory.Exists(_storage)) Directory.Delete(_storage, recursive: true);
+    }
+}
+
+/// <summary>Stands in for MediaMTX. The real one is exercised end to end with Compose.</summary>
+public sealed class FakeMediaMtx : IMediaMtxClient
+{
+    public HashSet<string> ReadyPaths { get; } = [];
+    public List<string> Kicked { get; } = [];
+
+    public Task<IReadOnlySet<string>> GetReadyPathsAsync(CancellationToken ct)
+    {
+        lock (ReadyPaths) return Task.FromResult<IReadOnlySet<string>>(ReadyPaths.ToHashSet());
+    }
+
+    public void SetReady(string path, bool ready)
+    {
+        lock (ReadyPaths)
+        {
+            if (ready) ReadyPaths.Add(path); else ReadyPaths.Remove(path);
+        }
+    }
+
+    public Task KickPublisherAsync(string path, CancellationToken ct)
+    {
+        lock (Kicked) Kicked.Add(path);
+        return Task.CompletedTask;
     }
 }
 

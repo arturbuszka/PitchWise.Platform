@@ -22,7 +22,7 @@ function StatusBadge({ status }: { status: SessionStatus }) {
   if (status === "processing") {
     return (
       <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-        Analyzing…
+        Processing…
       </span>
     );
   }
@@ -74,11 +74,11 @@ export function HomeClient() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/live"
+            href="/streams"
             className="border border-[#2f5fe0] text-[#2f5fe0] hover:bg-[#eef1ff] text-[14px] font-semibold rounded-[10px] px-4 py-2.5 flex items-center gap-1.5 transition-colors"
           >
             <span className="text-[15px] leading-none">▶</span>
-            Live analysis
+            Live streams
           </Link>
           <button
             onClick={() => setModalOpen(true)}

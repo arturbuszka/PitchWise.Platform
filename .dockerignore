@@ -4,5 +4,3 @@
 storage
 tests
 web
-worker-dotnet/vision-onnx/*.onnx
-worker-dotnet/vision-onnx/*.pt

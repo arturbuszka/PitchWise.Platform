@@ -26,14 +26,17 @@ services:
       DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
       REDIS_URL: "redis:6379"
       STORAGE_DIR: "/app/storage"
-      # HLS signed-URL minting (must match the nginx edge secret).
-      HLS_BASE_URL: "http://localhost:8080"
+      # The web console uses this key. Set your own, along with the secrets below, for anything but local use.
+      BOOTSTRAP_API_KEY: "${DEMO_API_KEY:-demo-key}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      # Signed-URL minting; must match the nginx edge secret.
+      HLS_BASE_URL: "${PUBLIC_EDGE_URL:-http://localhost:8080}"
       HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
       HLS_LINK_TTL_SECONDS: "3600"
-      # Live server URL as seen by the browser (host port 8001 exposed by the worker).
-      # Use 127.0.0.1 not localhost — on Windows/WSL2, localhost resolves to ::1 (IPv6)
-      # which hits wslrelay instead of the Docker port proxy, causing ERR_CONNECTION_RESET.
-      LIVE_WORKER_URL: "http://127.0.0.1:8001"
+      # What encoders are told to publish to.
+      RTMP_INGEST_URL: "${PUBLIC_RTMP_URL:-rtmp://localhost:1935}"
+      MEDIAMTX_API_URL: "http://mediamtx:9997"
+      MEDIAMTX_AUTH_SECRET: "${MEDIAMTX_AUTH_SECRET:-devsecret}"
     volumes:
       - ./storage:/app/storage:z
     healthcheck:
@@ -47,26 +50,17 @@ services:
       redis:
         condition: service_started
 
+  # Renders highlight reels with ffmpeg.
   worker:
     build:
       context: .
       dockerfile: worker-dotnet/Dockerfile
-    ports:
-      - "8001:8001"
     environment:
       DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
       REDIS_URL: "redis://redis:6379"
       STORAGE_DIR: "/app/storage"
-      # yolo11n (COCO) is what tools/models/export_yolo11n.sh produces. Set YOLO_MODEL=football
-      # after adding the football weights; see "Model setup" in the README.
-      YOLO_MODEL_PATH: "/app/models/${YOLO_MODEL:-yolo11n}.onnx"
-      # Optional models; see "Model setup" in the README. Leave unset to turn the feature off.
-      REID_MODEL_PATH: "${REID_MODEL_PATH:-}"
-      PITCH_MODEL_PATH: "${PITCH_MODEL_PATH:-}"
-      LIVE_PIPELINE_MODE: "detect"
     volumes:
       - ./storage:/app/storage:z
-      - ./worker-dotnet/vision-onnx:/app/models:ro,z
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,38 +70,47 @@ services:
       api:
         condition: service_healthy
 
-  # CDN-style edge: validates signed HLS URLs (secure_link) and caches segments,
-  # so the .NET API never serves video bytes. storage/hls is written by the worker
-  # and served read-only here.
+  # Live ingest: takes RTMP from encoders and packages it as HLS for the edge.
+  mediamtx:
+    image: docker.io/bluenviron/mediamtx:1.21.3
+    ports:
+      - "1935:1935"
+    environment:
+      MTX_AUTHHTTPADDRESS: "http://api:8000/internal/mediamtx/auth/${MEDIAMTX_AUTH_SECRET:-devsecret}"
+      MTX_HLSCDNSECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro,z
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # CDN-style edge: validates signed URLs and caches, so the API never serves stream bytes.
   nginx:
     image: nginx:1.27
     ports:
       - "8080:80"
     environment:
       HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
-      # Only substitute our secret; leave nginx runtime vars ($uri, $arg_md5, …) intact.
-      NGINX_ENVSUBST_FILTER: "HLS_SIGNING_SECRET"
+      MEDIAMTX_CDN_SECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"
+      # Only substitute our secrets; leave nginx runtime vars ($uri, $arg_md5, …) intact.
+      NGINX_ENVSUBST_FILTER: "HLS_SIGNING_SECRET|MEDIAMTX_CDN_SECRET"
     volumes:
       - ./storage/hls:/srv/hls:ro,z
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
     depends_on:
       - worker
+      - mediamtx
 
   web:
     build:
       context: web
       dockerfile: Dockerfile
-      # rewrites() is baked at build time (standalone) → the proxy destination must be
-      # set here, not just at runtime.
-      args:
-        API_INTERNAL_URL: http://api:8000
     ports:
       - "3000:3000"
     environment:
-      # The browser uses relative /api/* (same-origin) → Next proxy. SSR and the proxy
-      # run inside this container, so they reach the API via its service name.
-      # NEXT_PUBLIC_API_URL is intentionally empty (baked at build → relative paths).
+      # The browser calls relative /api/*. The Next server forwards those to the API and adds the key.
       API_INTERNAL_URL: http://api:8000
+      WEB_API_KEY: "${DEMO_API_KEY:-demo-key}"
     depends_on:
       api:
         condition: service_healthy

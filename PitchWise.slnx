@@ -2,16 +2,9 @@
   <Folder Name="/src/">
     <Project Path="api-dotnet/PitchWise.Api.csproj" />
     <Project Path="shared/PitchWise.Data/PitchWise.Data.csproj" />
-    <Project Path="worker-dotnet/PitchWise.Engine/PitchWise.Engine.csproj" />
-    <Project Path="worker-dotnet/PitchWise.Live/PitchWise.Live.csproj" />
-    <Project Path="worker-dotnet/PitchWise.Vision/PitchWise.Vision.csproj" />
     <Project Path="worker-dotnet/PitchWise.Worker/PitchWise.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PitchWise.Api.Tests/PitchWise.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/tools/">
-    <Project Path="worker-dotnet/PitchWise.Vision.ParityTest/PitchWise.Vision.ParityTest.csproj" />
-    <Project Path="worker-dotnet/PitchWise.Vision.Smoke/PitchWise.Vision.Smoke.csproj" />
   </Folder>
 </Solution>
