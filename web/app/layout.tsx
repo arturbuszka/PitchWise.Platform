@@ -9,7 +9,7 @@ const archivo = Archivo({
 
 export const metadata: Metadata = {
   title: "PitchWise",
-  description: "Auto-highlights from match recordings",
+  description: "Live match broadcasting for clubs",
 };
 
 export default function RootLayout({

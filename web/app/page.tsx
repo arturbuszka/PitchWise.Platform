@@ -1,5 +1,5 @@
-import { HomeClient } from "@/components/HomeClient";
+import { MatchesClient } from "@/components/MatchesClient";
 
 export default function Home() {
-  return <HomeClient />;
+  return <MatchesClient />;
 }

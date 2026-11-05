@@ -24,9 +24,12 @@ settings.HlsBaseUrl = Environment.GetEnvironmentVariable("HLS_BASE_URL") ?? sett
 settings.HlsSigningSecret = Environment.GetEnvironmentVariable("HLS_SIGNING_SECRET") ?? settings.HlsSigningSecret;
 if (int.TryParse(Environment.GetEnvironmentVariable("HLS_LINK_TTL_SECONDS"), out var hlsTtl))
     settings.HlsLinkTtlSeconds = hlsTtl;
+if (int.TryParse(Environment.GetEnvironmentVariable("HLS_LIVE_LINK_TTL_SECONDS"), out var hlsLiveTtl))
+    settings.HlsLiveLinkTtlSeconds = hlsLiveTtl;
 settings.AdminToken = Environment.GetEnvironmentVariable("ADMIN_TOKEN") ?? settings.AdminToken;
 settings.BootstrapApiKey = Environment.GetEnvironmentVariable("BOOTSTRAP_API_KEY") ?? settings.BootstrapApiKey;
 settings.RtmpIngestUrl = Environment.GetEnvironmentVariable("RTMP_INGEST_URL") ?? settings.RtmpIngestUrl;
+settings.SrtIngestUrl = Environment.GetEnvironmentVariable("SRT_INGEST_URL") ?? settings.SrtIngestUrl;
 settings.MediaMtxApiUrl = Environment.GetEnvironmentVariable("MEDIAMTX_API_URL") ?? settings.MediaMtxApiUrl;
 settings.MediaMtxAuthSecret = Environment.GetEnvironmentVariable("MEDIAMTX_AUTH_SECRET") ?? settings.MediaMtxAuthSecret;
 settings.EnsureDirs();
@@ -53,8 +56,10 @@ builder.Services.AddHttpClient<IMediaMtxClient, MediaMtxClient>(c =>
     c.BaseAddress = new Uri(settings.MediaMtxApiUrl);
     c.Timeout = TimeSpan.FromSeconds(5);
 });
-builder.Services.AddScoped<LiveStreamSync>();
-builder.Services.AddHostedService<LiveStreamMonitor>();
+builder.Services.AddSingleton<SignalTracker>();
+builder.Services.AddScoped<MatchSignalSync>();
+builder.Services.AddScoped<MatchMapper>();
+builder.Services.AddHostedService<MatchSignalMonitor>();
 
 // --- Full match recordings are large, so uploads have no size limit ---
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
@@ -71,7 +76,8 @@ builder.Services.AddControllers(o => o.Filters.Add<AnalysisAccessFilter>()).AddJ
     o.JsonSerializerOptions.Converters.Add(new EventTypeJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new EventSourceJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SessionStatusJsonConverter());
-    o.JsonSerializerOptions.Converters.Add(new LiveStreamStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new MatchStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new SignalStateJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new HighlightStatusJsonConverter());
 });
 

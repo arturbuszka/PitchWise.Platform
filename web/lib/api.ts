@@ -243,41 +243,121 @@ export const api = {
     },
   },
 
-  streams: {
-    list: (): Promise<LiveStream[]> =>
-      apiFetch(`${API}/api/streams`, { cache: "no-store" }).then((r) => r.json()),
-    create: (name: string): Promise<CreatedStream> =>
-      apiFetch(`${API}/api/streams`, {
+  matches: {
+    list: (): Promise<Match[]> => apiFetch(`${API}/api/matches`, { cache: "no-store" }).then(json<Match[]>),
+    get: (id: string): Promise<Match> => apiFetch(`${API}/api/matches/${id}`, { cache: "no-store" }).then(json<Match>),
+    create: (name: string): Promise<CreatedMatch> =>
+      apiFetch(`${API}/api/matches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
-      }).then((r) => r.json()),
-    // Signed URL on the edge. null until the stream is live.
-    playback: (id: string): Promise<HlsUrl | null> =>
-      apiFetch(`${API}/api/streams/${id}/playback`, { cache: "no-store" }).then((r) =>
-        r.ok ? r.json() : null
-      ),
-    end: (id: string): Promise<LiveStream> =>
-      apiFetch(`${API}/api/streams/${id}/end`, { method: "POST" }).then((r) => r.json()),
+      }).then(json<CreatedMatch>),
+    addInput: (id: string, name: string): Promise<CreatedInput> =>
+      apiFetch(`${API}/api/matches/${id}/inputs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }).then(json<CreatedInput>),
+    rotateKey: (id: string, inputId: string): Promise<InputAccess> =>
+      apiFetch(`${API}/api/matches/${id}/inputs/${inputId}/rotate-key`, { method: "POST" }).then(json<InputAccess>),
+    setProgram: (id: string, inputId: string): Promise<Match> =>
+      apiFetch(`${API}/api/matches/${id}/program`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input_id: inputId }),
+      }).then(json<Match>),
+    // Signed URL on the edge. null unless the match is live.
+    playback: (id: string): Promise<Playback | null> =>
+      apiFetch(`${API}/api/matches/${id}/playback`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
+    end: (id: string): Promise<Match> =>
+      apiFetch(`${API}/api/matches/${id}/end`, { method: "POST" }).then(json<Match>),
+  },
+
+  // What the public page and embed read. Needs no key.
+  publicMatches: {
+    get: (publicId: string): Promise<PublicMatch | null> =>
+      apiFetch(`${API}/api/public/matches/${publicId}`, { cache: "no-store" }).then(async (r) => {
+        if (r.status === 404) return null;
+        return json<PublicMatch>(r);
+      }),
   },
 };
 
-export type LiveStreamStatus = "idle" | "live" | "ended";
+async function json<T>(response: Response): Promise<T> {
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json() as Promise<T>;
+}
 
-export interface LiveStream {
+export type MatchStatus = "waiting" | "live" | "ended";
+
+export interface Signal {
+  state: "no_signal" | "receiving" | "stalled";
+  protocol: string | null;
+  connected_since: string | null;
+  bitrate_kbps: number | null;
+  // Loss, drops and round trip are null over RTMP, because TCP hides them.
+  loss_percent: number | null;
+  packets_lost: number | null;
+  packets_dropped: number | null;
+  rtt_ms: number | null;
+  tracks: string[];
+}
+
+export interface MatchInput {
   id: string;
   name: string;
-  status: LiveStreamStatus;
+  is_program: boolean;
+  signal: Signal;
+}
+
+export interface Match {
+  id: string;
+  name: string;
+  status: MatchStatus;
+  public_id: string;
+  public_url: string;
+  embed_url: string;
+  embed_html: string;
+  program_input_id: string | null;
+  analysis_id: number;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
+  inputs: MatchInput[];
 }
 
-// The stream key is only ever returned here, at creation.
-export interface CreatedStream {
-  stream: LiveStream;
+// The stream key is only ever returned when it is issued.
+export interface InputAccess {
+  input_id: string;
   stream_key: string;
-  ingest_url: string;
+  rtmp_url: string;
+  rtmp_server: string;
+  rtmp_stream_name: string;
+  srt_url: string;
+}
+
+export interface CreatedMatch {
+  match: Match;
+  access: InputAccess;
+}
+
+export interface CreatedInput {
+  input: MatchInput;
+  access: InputAccess;
+}
+
+export interface Playback {
+  url: string;
+  expires_at: string;
+  input_id: string;
+}
+
+export interface PublicMatch {
+  name: string;
+  status: MatchStatus;
+  started_at: string | null;
+  ended_at: string | null;
+  playback: Playback | null;
 }
 
 export function formatTime(seconds: number): string {

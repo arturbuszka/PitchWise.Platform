@@ -28,6 +28,7 @@ services:
     image: docker.io/bluenviron/mediamtx:1.21.3
     ports:
       - "1935:1935"
+      - "8890:8890/udp"
       # The API on the host polls this to see which streams are live.
       - "127.0.0.1:9997:9997"
     extra_hosts:
@@ -42,7 +43,7 @@ services:
   nginx:
     image: nginx:1.27
     ports:
-      - "8080:80"
+      - "${EDGE_PORT:-8080}:80"
     environment:
       HLS_SIGNING_SECRET: "devsecret"
       MEDIAMTX_CDN_SECRET: "devsecret"

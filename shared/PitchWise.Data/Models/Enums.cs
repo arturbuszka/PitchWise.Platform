@@ -36,10 +36,19 @@ public enum HighlightStatus
     Failed,
 }
 
-// Idle: waiting for the encoder, which may reconnect. Ended: closed for good.
-public enum LiveStreamStatus
+// Waiting: the program input has no signal, either not yet or for now, as encoders drop and
+// reconnect. Live: viewers can watch. Ended: closed for good by the customer.
+public enum MatchStatus
 {
-    Idle,
+    Waiting,
     Live,
     Ended,
+}
+
+// What is arriving on an input right now. Not stored: it comes from polling MediaMTX.
+public enum SignalState
+{
+    NoSignal,   // no_signal: no encoder is publishing
+    Receiving,
+    Stalled,    // the encoder is connected, but no data has arrived for a few seconds
 }

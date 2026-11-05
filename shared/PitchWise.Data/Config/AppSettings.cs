@@ -28,6 +28,8 @@ public class AppSettings
     public string HlsSigningSecret { get; set; } = "devsecret";
     // How long a signed HLS URL stays valid.
     public int HlsLinkTtlSeconds { get; set; } = 3600;
+    // The same for a live match. It must outlast a broadcast, since a player keeps using its URL.
+    public int HlsLiveLinkTtlSeconds { get; set; } = 21600;
 
     // --- Tenancy ---
     // Required by POST /api/admin/tenants. Empty turns the endpoint off.
@@ -38,6 +40,7 @@ public class AppSettings
     // --- Live ingest (MediaMTX) ---
     // Where encoders publish, as they see it.
     public string RtmpIngestUrl { get; set; } = "rtmp://localhost:1935";
+    public string SrtIngestUrl { get; set; } = "srt://localhost:8890";
     // MediaMTX control API, reachable only from inside the deployment.
     public string MediaMtxApiUrl { get; set; } = "http://localhost:9997";
     // Part of the auth callback URL, so only MediaMTX can reach that endpoint.

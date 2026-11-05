@@ -242,12 +242,16 @@ namespace PitchWise.Data.Migrations
                     b.ToTable("highlight", (string)null);
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.LiveStream", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.Match", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<int>("AnalysisId")
+                        .HasColumnType("integer")
+                        .HasColumnName("analysis_id");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -262,6 +266,15 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<Guid?>("ProgramInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("program_input_id");
+
+                    b.Property<string>("PublicId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("public_id");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -271,22 +284,58 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("status");
 
-                    b.Property<string>("StreamKeyHash")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("stream_key_hash");
-
                     b.Property<int>("TenantId")
                         .HasColumnType("integer")
                         .HasColumnName("tenant_id");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AnalysisId")
+                        .IsUnique();
+
+                    b.HasIndex("ProgramInputId")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.HasIndex("Status");
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("livestream", (string)null);
+                    b.ToTable("match", (string)null);
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.MatchInput", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("StreamKeyHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("stream_key_hash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchId");
+
+                    b.ToTable("match_input", (string)null);
                 });
 
             modelBuilder.Entity("PitchWise.Data.Models.Tenant", b =>
@@ -376,11 +425,30 @@ namespace PitchWise.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("PitchWise.Data.Models.LiveStream", b =>
+            modelBuilder.Entity("PitchWise.Data.Models.Match", b =>
                 {
+                    b.HasOne("PitchWise.Data.Models.AnalysisSession", null)
+                        .WithOne()
+                        .HasForeignKey("PitchWise.Data.Models.Match", "AnalysisId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PitchWise.Data.Models.MatchInput", null)
+                        .WithOne()
+                        .HasForeignKey("PitchWise.Data.Models.Match", "ProgramInputId");
+
                     b.HasOne("PitchWise.Data.Models.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.MatchInput", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.Match", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

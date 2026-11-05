@@ -1,4 +1,4 @@
-# RTMP in, HLS out. Only publishing RTMP and the API call below are open to the outside: the
+# RTMP or SRT in, HLS out. Only publishing and the API call below are open to the outside: the
 # HLS port is reached through the nginx edge, and the control API only from inside the deployment.
 logLevel: info
 
@@ -15,6 +15,10 @@ apiAddress: :9997
 rtmp: yes
 rtmpAddress: :1935
 
+# Copes with poor links better than RTMP, as it retransmits lost packets over UDP.
+srt: yes
+srtAddress: :8890
+
 hls: yes
 hlsAddress: :8888
 hlsVariant: mpegts
@@ -25,7 +29,6 @@ hlsSegmentDuration: 2s
 
 rtsp: no
 webrtc: no
-srt: no
 
 paths:
   '~^live/[0-9a-f-]{36}$': {}

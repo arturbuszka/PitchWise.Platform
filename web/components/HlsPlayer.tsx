@@ -14,15 +14,26 @@ export function HlsPlayer({
   fallbackSrc,
   className,
   autoPlay,
+  muted,
   controls = true,
+  onFatalError,
 }: {
   hlsUrl?: string | null;
   fallbackSrc?: string;
   className?: string;
   autoPlay?: boolean;
+  // Browsers only start playback on their own without sound.
+  muted?: boolean;
   controls?: boolean;
+  // For a live stream, which has no fallback: lets the page decide what to do next.
+  onFatalError?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const onFatalRef = useRef(onFatalError);
+
+  useEffect(() => {
+    onFatalRef.current = onFatalError;
+  }, [onFatalError]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -48,6 +59,7 @@ export function HlsPlayer({
         if (data.fatal) {
           hls.destroy();
           playMp4();
+          onFatalRef.current?.();
         }
       });
       return () => hls.destroy();
@@ -61,6 +73,7 @@ export function HlsPlayer({
       video.onerror = () => {
         video.onerror = null;
         playMp4();
+        onFatalRef.current?.();
       };
       return () => {
         video.onerror = null;
@@ -76,6 +89,8 @@ export function HlsPlayer({
       ref={videoRef}
       controls={controls}
       autoPlay={autoPlay}
+      muted={muted}
+      playsInline
       className={className}
     />
   );

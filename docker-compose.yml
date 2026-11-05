@@ -30,11 +30,14 @@ services:
       BOOTSTRAP_API_KEY: "${DEMO_API_KEY:-demo-key}"
       ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
       # Signed-URL minting; must match the nginx edge secret.
-      HLS_BASE_URL: "${PUBLIC_EDGE_URL:-http://localhost:8080}"
+      HLS_BASE_URL: "${PUBLIC_EDGE_URL:-http://localhost:${EDGE_PORT:-8080}}"
       HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
       HLS_LINK_TTL_SECONDS: "3600"
       # What encoders are told to publish to.
       RTMP_INGEST_URL: "${PUBLIC_RTMP_URL:-rtmp://localhost:1935}"
+      SRT_INGEST_URL: "${PUBLIC_SRT_URL:-srt://localhost:8890}"
+      # Where the public match pages live.
+      WEB_ORIGIN: "${PUBLIC_WEB_URL:-http://localhost:3000}"
       MEDIAMTX_API_URL: "http://mediamtx:9997"
       MEDIAMTX_AUTH_SECRET: "${MEDIAMTX_AUTH_SECRET:-devsecret}"
     volumes:
@@ -70,11 +73,12 @@ services:
       api:
         condition: service_healthy
 
-  # Live ingest: takes RTMP from encoders and packages it as HLS for the edge.
+  # Live ingest: takes RTMP and SRT from encoders and packages it as HLS for the edge.
   mediamtx:
     image: docker.io/bluenviron/mediamtx:1.21.3
     ports:
       - "1935:1935"
+      - "8890:8890/udp"
     environment:
       MTX_AUTHHTTPADDRESS: "http://api:8000/internal/mediamtx/auth/${MEDIAMTX_AUTH_SECRET:-devsecret}"
       MTX_HLSCDNSECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"
@@ -88,7 +92,7 @@ services:
   nginx:
     image: nginx:1.27
     ports:
-      - "8080:80"
+      - "${EDGE_PORT:-8080}:80"
     environment:
       HLS_SIGNING_SECRET: "${HLS_SIGNING_SECRET:-devsecret}"
       MEDIAMTX_CDN_SECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"

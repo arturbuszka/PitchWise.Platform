@@ -94,20 +94,66 @@ public record HlsUrlOut(string Url, DateTime ExpiresAt);
 // Public metadata for the share page (no analysis id leaked).
 public record SharePublicOut(string Name, HighlightStatus Status, DateTime ExpiresAt);
 
-// --- Live streams ---
+// --- Matches ---
 
-public record CreateStreamIn(string Name);
+public record CreateMatchIn(string Name, string? InputName = null);
 
-public record StreamOut(
+public record AddInputIn(string Name);
+
+public record SetProgramIn(Guid InputId);
+
+// What an input is receiving now. Loss, drops and round trip are null over RTMP: TCP hides them.
+public record SignalOut(
+    SignalState State,
+    string? Protocol,
+    DateTime? ConnectedSince,
+    double? BitrateKbps,
+    double? LossPercent,
+    long? PacketsLost,
+    long? PacketsDropped,
+    double? RttMs,
+    IReadOnlyList<string> Tracks);
+
+public record MatchInputOut(Guid Id, string Name, bool IsProgram, SignalOut Signal);
+
+public record MatchOut(
     Guid Id,
     string Name,
-    LiveStreamStatus Status,
+    MatchStatus Status,
+    string PublicId,
+    string PublicUrl,
+    string EmbedUrl,
+    string EmbedHtml,
+    Guid? ProgramInputId,
+    int AnalysisId,
     DateTime CreatedAt,
     DateTime? StartedAt,
-    DateTime? EndedAt);
+    DateTime? EndedAt,
+    List<MatchInputOut> Inputs);
 
-// Only returned at creation: the stream key is stored hashed and cannot be shown again.
-public record CreatedStreamOut(StreamOut Stream, string StreamKey, string IngestUrl);
+// Where an encoder publishes. Only returned when a key is issued: it is stored hashed, so it cannot
+// be shown again. OBS asks for the RTMP server and stream name separately.
+public record InputAccessOut(
+    Guid InputId,
+    string StreamKey,
+    string RtmpUrl,
+    string RtmpServer,
+    string RtmpStreamName,
+    string SrtUrl);
+
+public record CreatedMatchOut(MatchOut Match, InputAccessOut Access);
+
+public record CreatedInputOut(MatchInputOut Input, InputAccessOut Access);
+
+public record PlaybackOut(string Url, DateTime ExpiresAt, Guid InputId);
+
+// What anyone with the public link may see, so no tenant data or keys.
+public record PublicMatchOut(
+    string Name,
+    MatchStatus Status,
+    DateTime? StartedAt,
+    DateTime? EndedAt,
+    PlaybackOut? Playback);
 
 // --- Admin ---
 
@@ -118,4 +164,4 @@ public record CreatedTenantOut(int Id, string Name, string ApiKey);
 
 // --- MediaMTX auth callback ---
 
-public record MediaMtxAuthIn(string? Action, string? Path, string? Query);
+public record MediaMtxAuthIn(string? Action, string? Path, string? Query, string? Protocol);

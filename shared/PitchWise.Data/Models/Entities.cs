@@ -82,15 +82,34 @@ public class ApiKey
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-// One live channel: an encoder publishes to it over RTMP and viewers watch it over HLS.
-public class LiveStream
+// One broadcast. Encoders publish to its inputs; viewers watch whichever input is on air.
+public class Match
 {
     public Guid Id { get; set; }
     public int TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
-    public string StreamKeyHash { get; set; } = string.Empty;
-    public LiveStreamStatus Status { get; set; } = LiveStreamStatus.Idle;
+    // Unguessable id in the public page and embed URLs, so viewers never see the tenant's match id.
+    public string PublicId { get; set; } = string.Empty;
+    public MatchStatus Status { get; set; } = MatchStatus.Waiting;
+    // The input viewers get. Set in the same transaction that creates the match.
+    public Guid? ProgramInputId { get; set; }
+    // Where the match's events and highlights live, so a broadcast and a recording share one model.
+    public int AnalysisId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // When the program signal first arrived: time zero of the broadcast.
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
+}
+
+// One signal coming into a match, usually a camera. An encoder publishes to it over RTMP or SRT.
+public class MatchInput
+{
+    public Guid Id { get; set; }
+    public Guid MatchId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string StreamKeyHash { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // The MediaMTX path of an input. Its id, not a secret: publishing also needs the stream key.
+    public static string PathFor(Guid inputId) => $"live/{inputId}";
 }
