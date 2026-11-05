@@ -4,7 +4,8 @@
 
 A club in a lower league has cameras, but no way to broadcast from them. PitchWise is the service
 behind that broadcast: the club creates a match, points its encoder at the address it gets, and shares
-a public page, or embeds the player on its own site.
+a public page, or embeds the player on its own site. When the match ends, the same page plays the
+recording.
 
 ![Match console](docs/screenshot.png)
 
@@ -20,12 +21,14 @@ Built with ASP.NET Core 10, EF Core, PostgreSQL, Redis, MediaMTX, nginx and Next
   again on reconnect.
 - **Secure delivery:** viewers get signed, expiring URLs. An nginx edge checks them and caches the
   video, so the API never carries video bytes.
+- **Recording:** every input is recorded by itself. After the match, each one is a video in the
+  match's analysis, and the public page and embed play the one that was on air.
 - **Analyses:** every match has one for marking moments and rendering a highlight reel with ffmpeg,
-  and it accepts uploaded recordings. A live broadcast isn't recorded into it yet.
+  from its recordings or from uploads.
 - **Multi-tenant:** each customer has an API key and can only reach their own data.
 - **Share links:** public, time-limited links to a highlight.
 
-Not built yet: recording, sending to YouTube and Twitch, cutting between cameras without a reload, and
+Not built yet: sending to YouTube and Twitch, cutting between cameras without a reload, and
 live statistics. See the [roadmap](#roadmap).
 
 ## Architecture
@@ -37,10 +40,11 @@ live statistics. See the [roadmap](#roadmap).
                               render jobs  │  │ who may publish? who is publishing?
                                            ▼  │
                                Redis ──► Worker (ffmpeg)   MediaMTX ◄── SRT / RTMP ── Encoders
-                                           │                  │
-                                           ▼                  ▼ HLS
-                                        Storage ──────► nginx edge ──► Viewers
-                                                     signature check + cache
+                                           ▲ │                │ │
+                                           │ ▼   segments     │ ▼ HLS
+                                        Storage ◄─────────────┘ nginx edge ──► Viewers
+                                           │  finished videos    ▲  signature check + cache
+                                           └─────────────────────┘
 ```
 
 Decisions worth explaining:
@@ -60,10 +64,16 @@ Decisions worth explaining:
   nothing after a restart. Each API instance polls for itself, so instances share nothing. A connected
   encoder that stopped sending still looks ready to MediaMTX, so "stalled" is worked out from whether
   its byte counter is moving.
-- **A match always has an analysis.** That is where a recording will land, so a highlight from a live
-  match will work the same way as one from an upload.
-- **The start of a match is when its signal first arrived**, as reported by MediaMTX. It is kept across
-  reconnects, as the shared time zero for video and events.
+- **A match always has an analysis.** That is where its recordings land, so a highlight from a live
+  match works the same way as one from an upload.
+- **One match timeline.** A time `T` means `T` seconds after the match started by the clock, with signal
+  gaps counted. The start is when the signal on air first arrived, and it is kept across reconnects.
+  `Event.TimestampSeconds` is a `T`, and so is a position in any recording of the match, so nothing that
+  uses them has to convert anything. See [how a recording is made](#how-a-recording-is-made).
+- **Recording never touches the broadcast.** Each MediaMTX output is separate: with the recording disk
+  full, the live stream carried on.
+- **Finished videos reach viewers through the edge too.** The API signs a URL, and nginx serves the file
+  with Range requests. The edge has only the finished videos mounted, not uploads or raw segments.
 - **Tenant checks live in one filter.** Every route under an analysis names `{analysisId}`, so a
   global filter covers them all. Other tenants get a 404, so ids can't be probed.
 - **API keys and stream keys are stored hashed**, and shown only once.
@@ -112,6 +122,10 @@ console shows the state of the signal. To put the player on another site, use `e
 Use an encoder keyframe interval of about 2 seconds, as with `-g 50` here. Segments can't be shorter
 than the distance between keyframes, and longer segments add delay for viewers.
 
+End the match from the console, or with `POST /api/matches/{id}/end`. The recording is usually ready
+seconds later, as joining it re-encodes nothing: `public_url` then plays it, and the analysis has a
+video for each input.
+
 ### Add a customer
 
 Set `ADMIN_TOKEN` (see [.env.example](.env.example)) and then:
@@ -120,6 +134,39 @@ Set `ADMIN_TOKEN` (see [.env.example](.env.example)) and then:
 curl -s -X POST localhost:8000/api/admin/tenants \
   -H "X-Admin-Token: $ADMIN_TOKEN" -H 'Content-Type: application/json' -d '{"name":"Acme FC"}'
 ```
+
+## How a recording is made
+
+MediaMTX writes each input to files of about a minute in `storage/recordings/`. When the match ends, the
+worker joins each input's files into one MP4 in `storage/vod/` without re-encoding, then deletes them.
+
+**When the signal breaks,** MediaMTX starts a new file when it returns. The joined file keeps the break as
+a hole in its timestamps, at its place on the match timeline, and the video records where its gaps are:
+
+| What happened | Result |
+|---|---|
+| Encoder drops and reconnects | A gap of that length. Players skip it, and highlight clips stop short of it. |
+| Encoder stalls but stays connected | No hole, as MediaMTX goes by the encoder's own timestamps. The next file returns to the clock, and until then the timeline can be off by the length of the stall. |
+| MediaMTX crashes | The file stays readable, losing about the last second. |
+| Recording disk fills up | The broadcast carries on. The recording has a gap for as long as it lasts, and the only sign is in the MediaMTX log. |
+| Input started before the match | Cut at its first keyframe after the start. |
+| Input started after the match | Its video starts with a gap, so its positions still match the others. |
+
+**How exact the timeline is:** a file's time is when its first data reached MediaMTX, not when the camera
+filmed it, so the delay of the encoder and protocol is built in. In testing with ffmpeg as the encoder,
+SRT inputs lined up within the second we could read off the picture, about 2 seconds behind the clock, and
+an RTMP input was a steady 2 seconds behind them. That is plenty for highlight clips, but inputs aren't
+frame-accurate against each other.
+
+**Disk space:** about 0.45 GB per hour for each 1 Mbps, per input, as every input is recorded. Measured
+overhead is about 2%. Two hours from three cameras at 6 Mbps come to about 16 GB, and about twice that for
+the moment while they are joined, since the segments are deleted afterwards. The worker checks for that
+space first. Nothing is ever deleted automatically: a match that is never ended keeps its segments, and
+videos stay until someone removes them.
+
+If joining fails, the match shows why and its raw segments are kept, so it can be retried with
+`POST /api/matches/{id}/recording/retry` or from the console. A job lost to a crash is picked up when the
+worker next starts.
 
 ## API
 
@@ -133,11 +180,13 @@ Send `X-Api-Key` on everything except health checks, public match data, share li
 | `POST /api/matches/{id}/inputs/{inputId}/rotate-key` | Replace a lost or leaked key, disconnecting the encoder |
 | `PUT /api/matches/{id}/program` | Choose which input is on air |
 | `GET /api/matches/{id}/playback` | Signed HLS URL of what is on air (`409` unless live) |
-| `POST /api/matches/{id}/end` | Disconnect the encoders and close the match |
-| `GET /api/public/matches/{publicId}` | What the public page reads; needs no key |
+| `POST /api/matches/{id}/end` | Disconnect the encoders, close the match and start joining its recordings |
+| `POST /api/matches/{id}/recording/retry` | Try again after a recording failed |
+| `GET /api/public/matches/{publicId}` | What the public page reads, including a signed URL of the recording; needs no key |
 | `POST /api/analyses` | Create a match |
+| `GET /api/analyses/{id}` | An analysis, with its videos and their gaps |
 | `POST /api/analyses/{id}/videos` | Upload a recording |
-| `POST /api/analyses/{id}/events` | Mark a moment |
+| `POST /api/analyses/{id}/events` | Mark a moment; for a match, its time is on the match timeline |
 | `POST /api/analyses/{id}/highlights` | Render a reel from selected moments |
 | `GET /api/analyses/{id}/highlights/{hid}/hls` | Signed HLS URL for the reel |
 | `POST /api/analyses/{id}/highlights/{hid}/share` | Create a public link |
@@ -160,7 +209,7 @@ docker compose -f docker-compose.infra.yml up -d --wait
 dotnet run --project api-dotnet
 ```
 
-**Worker**, in its own terminal. It renders highlight reels with the local ffmpeg.
+**Worker**, in its own terminal. It renders highlight reels and joins recordings with the local ffmpeg.
 
 ```bash
 dotnet run --project worker-dotnet/PitchWise.Worker
@@ -190,6 +239,8 @@ Good to know:
   the host on port 8000.
 - If port 8080 is taken, start the infrastructure with `EDGE_PORT=8081` and the API with
   `HLS_BASE_URL=http://localhost:8081`.
+- MediaMTX runs as user 1000 here, so the worker on your machine can delete the segments it writes. If
+  your user id is different, start the infrastructure with `DEV_UID=$(id -u) DEV_GID=$(id -g)`.
 - `docker compose -f docker-compose.infra.yml down -v` also deletes the development database. The
   project name in that file is fixed, so every clone of this repo shares that one database.
 
@@ -201,7 +252,7 @@ dotnet test PitchWise.slnx
 
 Integration tests run the real API and migrations against Postgres and Redis containers from
 Testcontainers, so they need Docker, but not the infrastructure above. MediaMTX is faked in these
-tests. CI also builds every image.
+tests. The worker tests join real files, so they need ffmpeg too. CI also builds every image.
 
 To change the schema:
 
@@ -212,23 +263,23 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 
 ## Roadmap
 
-1. **Recording:** a broadcast records itself and is available as a video afterwards, in the match's
-   analysis, so highlights work on live matches.
-2. **YouTube and Twitch:** a copy of the signal for each destination, each failing on its own.
-3. **A switcher:** an operator cuts between cameras in the console, and viewers, the recording and
+1. **YouTube and Twitch:** a copy of the signal for each destination, each failing on its own.
+2. **A switcher:** an operator cuts between cameras in the console, and viewers, the recording and
    every destination get one program.
-4. **Analysis after the match:** a worker runs [PitchWise.Lab](https://github.com/arturbuszka/PitchWise.Lab),
+3. **Analysis after the match:** a worker runs [PitchWise.Lab](https://github.com/arturbuszka/PitchWise.Lab),
    a .NET computer vision pipeline, on a recording and stores the results. Lab is a separate process
-   that receives a copy of the video and returns only data, so its failure can't stop a broadcast.
-5. **Live analysis:** turn Lab's batch modules into streaming ones. Measured on a GTX 1660 Ti, the full
+   that receives a copy of the video and returns only data, so its failure can't stop a broadcast. It
+   gets the wide input rather than the program. Lab will need to read each frame's timestamp, because
+   counting frames doesn't survive a gap, or frames lost on the way.
+4. **Live analysis:** turn Lab's batch modules into streaming ones. Measured on a GTX 1660 Ti, the full
    pipeline takes about 0.87 s per frame, but detection, re-identification and tracking only about
    0.15 s. Most of the rest is pitch calibration, which needn't run on every frame.
 
 ## Known limitations
 
-- **Jobs can be lost.** A worker crash loses the job it popped from Redis, and a crash between the
-  database write and the push leaves a job that never starts. A reliable queue and an outbox would
-  close both gaps.
+- **Highlight jobs can be lost.** A worker crash loses the job it popped from Redis, and a crash between
+  the database write and the push leaves a job that never starts. A reliable queue and an outbox would
+  close both gaps. Recordings get around this: the worker picks up unfinished ones when it starts.
 - **Shared disk.** The API, worker and edge exchange files through one volume, so they can't run on
   separate machines without object storage.
 - **One quality level.** MediaMTX repackages what the encoder sends, so there is no adaptive bitrate
@@ -243,9 +294,17 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 - **The web console acts as one tenant.** It adds the demo key on the server, so it needs a login
   before being exposed.
 - **MD5 signatures.** nginx `secure_link` requires MD5. A commercial CDN's token auth would replace it.
-- **Broadcasts aren't recorded yet.** A broadcast is gone once it leaves the playlist, so the analysis
-  of a live match has no video unless one is uploaded.
-- **A match page has nothing to show afterwards.** Once a match ends, viewers just see that it has.
+- **The public recording is one input.** Viewers get whichever input was on air when the match ended,
+  whatever was on air before that, until the switcher makes one program.
+- **Changing encoder settings during a match stops its recording from joining.** Files joined without
+  re-encoding must match, so a new resolution after a reconnect ends in a failed recording, with its raw
+  segments kept. Trying again gives the same result, as there is no re-encoding path yet. Reconnecting
+  with the same settings is fine.
+- **Inputs aren't frame-accurate against each other.** See
+  [how exact the timeline is](#how-a-recording-is-made).
+- **A full disk isn't reported.** Only the MediaMTX log shows that recording has stopped.
+- **Tested in Chromium and Firefox with ffmpeg as the encoder.** Safari, iOS, OBS and vMix haven't been
+  tried with recordings. Neither has anything much longer than a few minutes.
 
 ## License
 
