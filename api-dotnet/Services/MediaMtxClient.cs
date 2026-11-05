@@ -41,7 +41,7 @@ public class MediaMtxClient(HttpClient http) : IMediaMtxClient
         return paths.ToDictionary(p => p.Name, p => new Publisher(
             p.Source!.Id,
             p.Source.Type.Replace("Conn", "").ToLowerInvariant(),
-            p.ReadyTime,
+            p.ReadyTime ?? DateTime.UtcNow,
             p.InboundBytes,
             p.Tracks ?? [],
             srt.TryGetValue(p.Source.Id, out var c)
@@ -79,7 +79,8 @@ public class MediaMtxClient(HttpClient http) : IMediaMtxClient
     private record PathItem(
         string Name,
         bool Ready,
-        DateTime ReadyTime,
+        // Null for a path nobody is publishing to, which stays listed for as long as it is in use.
+        DateTime? ReadyTime,
         PathSource? Source,
         long InboundBytes,
         List<string>? Tracks);

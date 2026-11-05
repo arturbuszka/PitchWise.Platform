@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PitchWise.Api.Auth;
@@ -208,7 +209,7 @@ public class MatchesController(
         {
             await mediaMtx.KickPublisherAsync(MatchInput.PathFor(inputId), ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning("Could not disconnect the encoder on input {InputId}: {Message}", inputId, e.Message);
         }
