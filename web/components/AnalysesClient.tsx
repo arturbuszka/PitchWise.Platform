@@ -40,7 +40,7 @@ function StatusBadge({ status }: { status: SessionStatus }) {
   );
 }
 
-export function HomeClient() {
+export function AnalysesClient() {
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -74,11 +74,11 @@ export function HomeClient() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/streams"
+            href="/"
             className="border border-[#2f5fe0] text-[#2f5fe0] hover:bg-[#eef1ff] text-[14px] font-semibold rounded-[10px] px-4 py-2.5 flex items-center gap-1.5 transition-colors"
           >
             <span className="text-[15px] leading-none">▶</span>
-            Live streams
+            Matches
           </Link>
           <button
             onClick={() => setModalOpen(true)}

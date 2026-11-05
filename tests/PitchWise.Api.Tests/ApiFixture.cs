@@ -19,6 +19,7 @@ public sealed class ApiFixture : IAsyncLifetime
 {
     public const string HlsSecret = "test-secret";
     public const string HlsBaseUrl = "http://edge.test";
+    public const string WebOrigin = "http://web.test";
     public const string HighlightQueue = "highlight_jobs_test";
     public const string ApiKey = "test-api-key";
     public const string AdminToken = "test-admin-token";
@@ -50,6 +51,7 @@ public sealed class ApiFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("BOOTSTRAP_API_KEY", ApiKey);
         Environment.SetEnvironmentVariable("ADMIN_TOKEN", AdminToken);
         Environment.SetEnvironmentVariable("MEDIAMTX_AUTH_SECRET", MediaMtxSecret);
+        Environment.SetEnvironmentVariable("WEB_ORIGIN", WebOrigin);
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureTestServices(services =>
         {
@@ -98,19 +100,24 @@ public sealed class ApiFixture : IAsyncLifetime
 /// <summary>Stands in for MediaMTX. The real one is exercised end to end with Compose.</summary>
 public sealed class FakeMediaMtx : IMediaMtxClient
 {
-    public HashSet<string> ReadyPaths { get; } = [];
+    private readonly Dictionary<string, Publisher> _publishers = [];
     public List<string> Kicked { get; } = [];
 
-    public Task<IReadOnlySet<string>> GetReadyPathsAsync(CancellationToken ct)
+    public Task<IReadOnlyDictionary<string, Publisher>> GetPublishersAsync(CancellationToken ct)
     {
-        lock (ReadyPaths) return Task.FromResult<IReadOnlySet<string>>(ReadyPaths.ToHashSet());
+        lock (_publishers)
+            return Task.FromResult<IReadOnlyDictionary<string, Publisher>>(new Dictionary<string, Publisher>(_publishers));
     }
 
-    public void SetReady(string path, bool ready)
+    public void SetPublishing(string inputId, bool publishing, DateTime? since = null, string protocol = "rtmp")
     {
-        lock (ReadyPaths)
+        lock (_publishers)
         {
-            if (ready) ReadyPaths.Add(path); else ReadyPaths.Remove(path);
+            var path = $"live/{inputId}";
+            if (publishing)
+                _publishers[path] = new Publisher("conn-1", protocol, since ?? DateTime.UtcNow, 1000, ["H264"]);
+            else
+                _publishers.Remove(path);
         }
     }
 

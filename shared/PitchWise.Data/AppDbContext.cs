@@ -16,7 +16,8 @@ public class AppDbContext : DbContext
     public DbSet<Highlight> Highlights => Set<Highlight>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
-    public DbSet<LiveStream> LiveStreams => Set<LiveStream>();
+    public DbSet<Match> Matches => Set<Match>();
+    public DbSet<MatchInput> MatchInputs => Set<MatchInput>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -25,8 +26,8 @@ public class AppDbContext : DbContext
         var sessionStatus = new ValueConverter<SessionStatus, string>(
             v => EnumMap.SessionToDb(v), v => EnumMap.SessionFromDb(v));
 
-        var liveStatus = new ValueConverter<LiveStreamStatus, string>(
-            v => EnumMap.LiveToDb(v), v => EnumMap.LiveFromDb(v));
+        var matchStatus = new ValueConverter<MatchStatus, string>(
+            v => EnumMap.MatchToDb(v), v => EnumMap.MatchFromDb(v));
 
         var eventType = new ValueConverter<EventType, string>(
             v => EventTypeMap.ToDb(v), v => EventTypeMap.FromDb(v));
@@ -111,21 +112,40 @@ public class AppDbContext : DbContext
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
         });
 
-        b.Entity<LiveStream>(e =>
+        b.Entity<Match>(e =>
         {
-            e.ToTable("livestream");
+            e.ToTable("match");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.TenantId).HasColumnName("tenant_id");
             e.Property(x => x.Name).HasColumnName("name");
-            e.Property(x => x.StreamKeyHash).HasColumnName("stream_key_hash");
-            e.Property(x => x.Status).HasColumnName("status").HasConversion(liveStatus);
+            e.Property(x => x.PublicId).HasColumnName("public_id");
+            e.Property(x => x.Status).HasColumnName("status").HasConversion(matchStatus);
+            e.Property(x => x.ProgramInputId).HasColumnName("program_input_id");
+            e.Property(x => x.AnalysisId).HasColumnName("analysis_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.StartedAt).HasColumnName("started_at");
             e.Property(x => x.EndedAt).HasColumnName("ended_at");
             e.HasIndex(x => x.TenantId);
             e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.PublicId).IsUnique();
+            e.HasIndex(x => x.AnalysisId).IsUnique();
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId);
+            e.HasOne<AnalysisSession>().WithOne().HasForeignKey<Match>(x => x.AnalysisId);
+            e.HasOne<MatchInput>().WithOne().HasForeignKey<Match>(x => x.ProgramInputId);
+        });
+
+        b.Entity<MatchInput>(e =>
+        {
+            e.ToTable("match_input");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.MatchId).HasColumnName("match_id");
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.StreamKeyHash).HasColumnName("stream_key_hash");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => x.MatchId);
+            e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
         });
 
         b.Entity<Highlight>(e =>
@@ -168,18 +188,18 @@ public static class EnumMap
         _ => SessionStatus.Draft,
     };
 
-    public static string LiveToDb(LiveStreamStatus v) => v switch
+    public static string MatchToDb(MatchStatus v) => v switch
     {
-        LiveStreamStatus.Live => "live",
-        LiveStreamStatus.Ended => "ended",
-        _ => "idle",
+        MatchStatus.Live => "live",
+        MatchStatus.Ended => "ended",
+        _ => "waiting",
     };
 
-    public static LiveStreamStatus LiveFromDb(string v) => v switch
+    public static MatchStatus MatchFromDb(string v) => v switch
     {
-        "live" => LiveStreamStatus.Live,
-        "ended" => LiveStreamStatus.Ended,
-        _ => LiveStreamStatus.Idle,
+        "live" => MatchStatus.Live,
+        "ended" => MatchStatus.Ended,
+        _ => MatchStatus.Waiting,
     };
 
     public static string SourceToDb(EventSource v) => v == EventSource.Auto ? "auto" : "manual";

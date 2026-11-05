@@ -277,7 +277,7 @@ export function AnalysisDetailClient({
         {/* Bottom */}
         <div className="px-3 pb-4 pt-3 border-t border-[#22272f] flex flex-col gap-2">
           <Link
-            href="/"
+            href="/analyses"
             className="text-[13px] text-[#8b919b] hover:text-white transition-colors font-medium px-1"
           >
             ↩ All analyses

@@ -45,13 +45,32 @@ public class SessionStatusJsonConverter : JsonConverter<SessionStatus>
         });
 }
 
-public class LiveStreamStatusJsonConverter : JsonConverter<LiveStreamStatus>
+public class MatchStatusJsonConverter : JsonConverter<MatchStatus>
 {
-    public override LiveStreamStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        EnumMap.LiveFromDb(reader.GetString() ?? "");
+    public override MatchStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        EnumMap.MatchFromDb(reader.GetString() ?? "");
 
-    public override void Write(Utf8JsonWriter writer, LiveStreamStatus value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(EnumMap.LiveToDb(value));
+    public override void Write(Utf8JsonWriter writer, MatchStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(EnumMap.MatchToDb(value));
+}
+
+public class SignalStateJsonConverter : JsonConverter<SignalState>
+{
+    public override SignalState Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString() switch
+        {
+            "receiving" => SignalState.Receiving,
+            "stalled" => SignalState.Stalled,
+            _ => SignalState.NoSignal,
+        };
+
+    public override void Write(Utf8JsonWriter writer, SignalState value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            SignalState.Receiving => "receiving",
+            SignalState.Stalled => "stalled",
+            _ => "no_signal",
+        });
 }
 
 public class HighlightStatusJsonConverter : JsonConverter<HighlightStatus>

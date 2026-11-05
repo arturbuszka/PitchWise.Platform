@@ -24,9 +24,9 @@ public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : Con
 
         return request.Action switch
         {
-            // MediaMTX's HLS port is reachable only by the edge, which has already checked the
-            // viewer's signature, so reads need no second check.
-            "read" => Ok(),
+            // HLS comes through the edge, which has already checked the viewer's signature. RTMP and
+            // SRT are open to the internet, and reading over them would skip that check.
+            "read" => request.Protocol == "hls" ? Ok() : Unauthorized(),
             "publish" => await CanPublish(request) ? Ok() : Unauthorized(),
             _ => Unauthorized(),
         };
@@ -36,7 +36,7 @@ public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : Con
     {
         const string prefix = "live/";
         if (request.Path is null || !request.Path.StartsWith(prefix)
-            || !Guid.TryParse(request.Path[prefix.Length..], out var streamId))
+            || !Guid.TryParse(request.Path[prefix.Length..], out var inputId))
             return false;
 
         var query = QueryHelpers.ParseQuery(request.Query);
@@ -44,7 +44,10 @@ public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : Con
             return false;
 
         var hash = Secrets.Hash(key.ToString());
-        return await db.LiveStreams.AnyAsync(s =>
-            s.Id == streamId && s.StreamKeyHash == hash && s.Status != LiveStreamStatus.Ended);
+        return await (
+            from input in db.MatchInputs
+            join match in db.Matches on input.MatchId equals match.Id
+            where input.Id == inputId && input.StreamKeyHash == hash && match.Status != MatchStatus.Ended
+            select input.Id).AnyAsync();
     }
 }
