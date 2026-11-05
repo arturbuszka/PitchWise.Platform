@@ -7,6 +7,42 @@ namespace PitchWise.Worker;
 public static class FfmpegTools
 {
     public static string FfmpegPath { get; set; } = "ffmpeg";
+    public static string FfprobePath { get; set; } = "ffprobe";
+
+    /// <summary>Reads a media file's streams. Null if it can't be read, as with one cut off at the very start.</summary>
+    public static MediaProbe? Probe(string path)
+    {
+        var (code, output, _) = Capture(FfprobePath,
+            "-v", "error", "-show_format", "-show_streams", "-show_data_hash", "md5", "-of", "json", path);
+        return code == 0 ? MediaProbe.Parse(output) : null;
+    }
+
+    /// <summary>The first keyframe at or after a position, in seconds. Null if there is none.</summary>
+    public static double? KeyframeAtOrAfter(string path, double position)
+    {
+        var (code, output, _) = Capture(FfprobePath,
+            "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", path);
+        if (code != 0) return null;
+        foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] fields = line.Split(',');
+            if (fields.Length >= 2 && fields[1].StartsWith('K')
+                && double.TryParse(fields[0], CultureInfo.InvariantCulture, out double pts) && pts >= position)
+                return pts;
+        }
+        return null;
+    }
+
+    /// <summary>Joins a concat list into one MP4 without re-encoding. Returns ffmpeg's complaint if it fails.</summary>
+    public static string? Stitch(string concatListPath, string outPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        var (code, _, errors) = Capture(FfmpegPath,
+            "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0", "-i", concatListPath,
+            "-c", "copy", "-movflags", "+faststart", outPath);
+        return code == 0 && File.Exists(outPath) ? null : errors.Trim();
+    }
 
     /// <summary>Cuts [start, end] into outPath via stream copy.</summary>
     public static bool ExtractClip(string videoPath, string outPath, double startSeconds, double endSeconds)
@@ -66,6 +102,33 @@ public static class FfmpegTools
             "-hls_flags", "independent_segments",
             "-hls_segment_filename", Path.Combine(outDir, "segment_%03d.ts"),
             playlist) && File.Exists(playlist);
+    }
+
+    private static (int ExitCode, string Output, string Errors) Capture(string program, params string[] args)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = program,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string a in args) psi.ArgumentList.Add(a);
+
+        try
+        {
+            using var proc = Process.Start(psi)!;
+            // Both pipes must be drained at once, or a full one blocks the process forever.
+            Task<string> errors = proc.StandardError.ReadToEndAsync();
+            string output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+            return (proc.ExitCode, output, errors.GetAwaiter().GetResult());
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return (-1, "", e.Message);
+        }
     }
 
     private static bool Run(params string[] args)

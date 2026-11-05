@@ -66,7 +66,7 @@ public class AnalysesController : ControllerBase
         return new AnalysisDetail(
             obj.Id, obj.Name, obj.Subtitle, obj.Sport, obj.Status,
             obj.CreatedAt, obj.UpdatedAt,
-            videos.Select(v => new VideoOut(v.Id, v.AnalysisId, v.Name, v.DurationSeconds, v.Fps, v.Order)).ToList());
+            videos.Select(VideoOut.From).ToList());
     }
 
     // ---- Events ----

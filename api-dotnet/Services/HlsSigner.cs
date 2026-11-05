@@ -52,6 +52,17 @@ public class HlsSigner
         return ($"{_settings.HlsBaseUrl.TrimEnd('/')}/live/{md5}/{epoch}/{inputId}/index.m3u8", expires);
     }
 
+    // A finished recording, as one file with Range requests. It lasts as long as a live link, since
+    // a player keeps asking for parts of the file while someone watches.
+    public (string Url, DateTimeOffset ExpiresAt) SignVod(string filename)
+    {
+        var expires = DateTimeOffset.UtcNow.AddSeconds(_settings.HlsLiveLinkTtlSeconds);
+        var epoch = expires.ToUnixTimeSeconds();
+        var toSign = $"{epoch} /vod/{filename} {_settings.HlsSigningSecret}";
+        var md5 = Base64Url(MD5.HashData(Encoding.UTF8.GetBytes(toSign)));
+        return ($"{_settings.HlsBaseUrl.TrimEnd('/')}/vod/{md5}/{epoch}/{filename}", expires);
+    }
+
     // nginx-style base64url: standard base64, '+'→'-', '/'→'_', no '=' padding.
     private static string Base64Url(byte[] bytes) =>
         Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');

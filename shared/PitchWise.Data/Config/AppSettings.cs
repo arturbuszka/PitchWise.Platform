@@ -1,3 +1,5 @@
+using PitchWise.Data.Models;
+
 namespace PitchWise.Data.Config;
 
 // Settings shared by the API and the worker, loaded from the environment and
@@ -17,6 +19,8 @@ public class AppSettings
 
     // Name of the Redis list the highlight worker loop pops from.
     public string HighlightQueue { get; set; } = "highlight_jobs";
+    // The same for putting a match's recordings together once it has ended.
+    public string RecordingQueue { get; set; } = "recording_jobs";
 
     // How long a generated share link stays valid.
     public int ShareLinkTtlHours { get; set; } = 24;
@@ -50,6 +54,16 @@ public class AppSettings
     public string UploadsDir => Path.Combine(StorageDir, "uploads");
     public string ClipsDir => Path.Combine(StorageDir, "clips");
     public string HlsDir => Path.Combine(StorageDir, "hls");
+    // Raw segments from MediaMTX, by path: recordings/live/{inputId}/.
+    public string RecordingsDir => Path.Combine(StorageDir, "recordings");
+    // Finished recordings. The only video directory the edge can read: it has no way to uploads.
+    public string VodDir => Path.Combine(StorageDir, "vod");
+
+    public string VideoPath(Video video) =>
+        Path.Combine(video.MatchInputId is null ? UploadsDir : VodDir, video.Filename);
+
+    public string InputRecordingDir(Guid inputId) =>
+        Path.Combine(RecordingsDir, MatchInput.PathFor(inputId));
 
     public void EnsureDirs()
     {
@@ -57,5 +71,7 @@ public class AppSettings
         Directory.CreateDirectory(UploadsDir);
         Directory.CreateDirectory(ClipsDir);
         Directory.CreateDirectory(HlsDir);
+        Directory.CreateDirectory(RecordingsDir);
+        Directory.CreateDirectory(VodDir);
     }
 }

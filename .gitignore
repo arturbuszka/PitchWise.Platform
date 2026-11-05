@@ -16,6 +16,12 @@ venv/
 !/.dev-storage/hls/
 /.dev-storage/hls/*
 !/.dev-storage/hls/.gitkeep
+!/.dev-storage/recordings/
+/.dev-storage/recordings/*
+!/.dev-storage/recordings/.gitkeep
+!/.dev-storage/vod/
+/.dev-storage/vod/*
+!/.dev-storage/vod/.gitkeep
 *.mp4
 *.mov
 *.mkv

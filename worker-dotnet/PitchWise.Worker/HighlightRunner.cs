@@ -55,26 +55,25 @@ public sealed class HighlightRunner
                 .ToListAsync(ct);
             if (rows.Count == 0) throw new InvalidOperationException("Selected events not found");
 
-            var videoPaths = new Dictionary<int, string>();
+            var videos = new Dictionary<int, Video>();
             var clipPaths = new List<string>();
             int total = rows.Count;
             for (int i = 0; i < rows.Count; i++)
             {
                 Event ev = rows[i];
                 if (ev.VideoId is not int vid) continue;
-                if (!videoPaths.TryGetValue(vid, out string? vpath))
+                if (!videos.TryGetValue(vid, out Video? video))
                 {
-                    Video? video = await db.Videos.FirstOrDefaultAsync(v => v.Id == vid, ct);
+                    video = await db.Videos.FirstOrDefaultAsync(v => v.Id == vid, ct);
                     if (video is null) continue;
-                    vpath = Path.Combine(_appSettings.UploadsDir, video.Filename);
-                    videoPaths[vid] = vpath;
+                    videos[vid] = video;
                 }
 
-                double start = Math.Max(0.0, ev.TimestampSeconds - _worker.ClipPreSeconds);
-                double end = ev.TimestampSeconds + _worker.ClipPostSeconds;
+                var (start, end) = ClipPlanner.Plan(
+                    ev.TimestampSeconds, _worker.ClipPreSeconds, _worker.ClipPostSeconds, video.Gaps);
                 string clipName = $"hl{highlight.Id}_ev{ev.Id}.mp4";
                 string clipPath = Path.Combine(_appSettings.ClipsDir, clipName);
-                if (FfmpegTools.ExtractClip(vpath, clipPath, start, end))
+                if (FfmpegTools.ExtractClip(_appSettings.VideoPath(video), clipPath, start, end))
                     clipPaths.Add(clipPath);
 
                 highlight.Progress = Math.Round(0.8 * (i + 1) / total, 3);

@@ -6,5 +6,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PitchWise.Api.Tests/PitchWise.Api.Tests.csproj" />
+    <Project Path="tests/PitchWise.Worker.Tests/PitchWise.Worker.Tests.csproj" />
   </Folder>
 </Solution>

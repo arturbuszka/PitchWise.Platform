@@ -29,6 +29,9 @@ public class AppDbContext : DbContext
         var matchStatus = new ValueConverter<MatchStatus, string>(
             v => EnumMap.MatchToDb(v), v => EnumMap.MatchFromDb(v));
 
+        var recordingStatus = new ValueConverter<RecordingStatus, string>(
+            v => EnumMap.RecordingToDb(v), v => EnumMap.RecordingFromDb(v));
+
         var eventType = new ValueConverter<EventType, string>(
             v => EventTypeMap.ToDb(v), v => EventTypeMap.FromDb(v));
 
@@ -66,7 +69,12 @@ public class AppDbContext : DbContext
             e.Property(x => x.Fps).HasColumnName("fps");
             e.Property(x => x.Order).HasColumnName("order");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.MatchInputId).HasColumnName("match_input_id");
+            e.OwnsMany(x => x.Gaps, g => g.ToJson("gaps"));
             e.HasIndex(x => x.AnalysisId);
+            // An input has one recording, however many times the job runs.
+            e.HasIndex(x => x.MatchInputId).IsUnique();
+            e.HasOne<MatchInput>().WithMany().HasForeignKey(x => x.MatchInputId);
         });
 
         b.Entity<Event>(e =>
@@ -126,6 +134,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.StartedAt).HasColumnName("started_at");
             e.Property(x => x.EndedAt).HasColumnName("ended_at");
+            e.Property(x => x.RecordingStatus).HasColumnName("recording_status").HasConversion(recordingStatus);
+            e.Property(x => x.RecordingError).HasColumnName("recording_error");
             e.HasIndex(x => x.TenantId);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.PublicId).IsUnique();
@@ -200,6 +210,22 @@ public static class EnumMap
         "live" => MatchStatus.Live,
         "ended" => MatchStatus.Ended,
         _ => MatchStatus.Waiting,
+    };
+
+    public static string RecordingToDb(RecordingStatus v) => v switch
+    {
+        RecordingStatus.Processing => "processing",
+        RecordingStatus.Ready => "ready",
+        RecordingStatus.Failed => "failed",
+        _ => "none",
+    };
+
+    public static RecordingStatus RecordingFromDb(string v) => v switch
+    {
+        "processing" => RecordingStatus.Processing,
+        "ready" => RecordingStatus.Ready,
+        "failed" => RecordingStatus.Failed,
+        _ => RecordingStatus.None,
     };
 
     public static string SourceToDb(EventSource v) => v == EventSource.Auto ? "auto" : "manual";

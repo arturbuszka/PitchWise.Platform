@@ -38,7 +38,7 @@ public class VideosController : ControllerBase
             .Where(v => v.AnalysisId == analysisId)
             .OrderBy(v => v.Order).ThenBy(v => v.CreatedAt)
             .ToListAsync();
-        return rows.Select(v => new VideoOut(v.Id, v.AnalysisId, v.Name, v.DurationSeconds, v.Fps, v.Order)).ToList();
+        return rows.Select(VideoOut.From).ToList();
     }
 
     [HttpPost("{analysisId:int}/videos")]
@@ -69,7 +69,7 @@ public class VideosController : ControllerBase
         session.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        return new VideoOut(video.Id, video.AnalysisId, video.Name, video.DurationSeconds, video.Fps, video.Order);
+        return VideoOut.From(video);
     }
 
     [HttpGet("{analysisId:int}/videos/{videoId:int}/stream")]
@@ -78,7 +78,7 @@ public class VideosController : ControllerBase
         var video = await GetVideoOr404(analysisId, videoId);
         if (video is null) return NotFound(new { detail = "Video not found" });
 
-        var path = Path.Combine(_settings.UploadsDir, video.Filename);
+        var path = _settings.VideoPath(video);
         if (!System.IO.File.Exists(path)) return NotFound(new { detail = "Video file does not exist" });
 
         // enableRangeProcessing => video seeking in the browser (HTTP Range).

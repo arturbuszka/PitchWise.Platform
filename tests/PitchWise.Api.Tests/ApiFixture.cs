@@ -21,6 +21,7 @@ public sealed class ApiFixture : IAsyncLifetime
     public const string HlsBaseUrl = "http://edge.test";
     public const string WebOrigin = "http://web.test";
     public const string HighlightQueue = "highlight_jobs_test";
+    public const string RecordingQueue = "recording_jobs_test";
     public const string ApiKey = "test-api-key";
     public const string AdminToken = "test-admin-token";
     public const string MediaMtxSecret = "test-mediamtx-secret";
@@ -48,6 +49,7 @@ public sealed class ApiFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("HLS_SIGNING_SECRET", HlsSecret);
         Environment.SetEnvironmentVariable("HLS_BASE_URL", HlsBaseUrl);
         Environment.SetEnvironmentVariable("HIGHLIGHT_QUEUE", HighlightQueue);
+        Environment.SetEnvironmentVariable("RECORDING_QUEUE", RecordingQueue);
         Environment.SetEnvironmentVariable("BOOTSTRAP_API_KEY", ApiKey);
         Environment.SetEnvironmentVariable("ADMIN_TOKEN", AdminToken);
         Environment.SetEnvironmentVariable("MEDIAMTX_AUTH_SECRET", MediaMtxSecret);

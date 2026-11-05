@@ -53,7 +53,7 @@ services:
       redis:
         condition: service_started
 
-  # Renders highlight reels with ffmpeg.
+  # Renders highlight reels and joins recordings with ffmpeg.
   worker:
     build:
       context: .
@@ -84,6 +84,7 @@ services:
       MTX_HLSCDNSECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro,z
+      - ./storage/recordings:/recordings:z
     depends_on:
       api:
         condition: service_healthy
@@ -100,6 +101,7 @@ services:
       NGINX_ENVSUBST_FILTER: "HLS_SIGNING_SECRET|MEDIAMTX_CDN_SECRET"
     volumes:
       - ./storage/hls:/srv/hls:ro,z
+      - ./storage/vod:/srv/vod:ro,z
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
     depends_on:
       - worker

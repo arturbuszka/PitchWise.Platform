@@ -39,6 +39,12 @@ export interface AnalysisSummary {
   video_count: number;
 }
 
+// A part of a recording with no signal, in seconds.
+export interface Gap {
+  start: number;
+  end: number;
+}
+
 export interface VideoItem {
   id: number;
   analysis_id: number;
@@ -46,6 +52,7 @@ export interface VideoItem {
   duration_seconds: number | null;
   fps: number | null;
   order: number;
+  gaps: Gap[];
 }
 
 export interface AnalysisDetail extends AnalysisSummary {
@@ -271,6 +278,8 @@ export const api = {
       apiFetch(`${API}/api/matches/${id}/playback`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
     end: (id: string): Promise<Match> =>
       apiFetch(`${API}/api/matches/${id}/end`, { method: "POST" }).then(json<Match>),
+    retryRecording: (id: string): Promise<Match> =>
+      apiFetch(`${API}/api/matches/${id}/recording/retry`, { method: "POST" }).then(json<Match>),
   },
 
   // What the public page and embed read. Needs no key.
@@ -289,6 +298,7 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 export type MatchStatus = "waiting" | "live" | "ended";
+export type RecordingStatus = "none" | "processing" | "ready" | "failed";
 
 export interface Signal {
   state: "no_signal" | "receiving" | "stalled";
@@ -323,6 +333,8 @@ export interface Match {
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
+  recording_status: RecordingStatus;
+  recording_error: string | null;
   inputs: MatchInput[];
 }
 
@@ -352,12 +364,22 @@ export interface Playback {
   input_id: string;
 }
 
+// A finished recording on the edge.
+export interface Vod {
+  url: string;
+  expires_at: string;
+  duration_seconds: number | null;
+  gaps: Gap[];
+}
+
 export interface PublicMatch {
   name: string;
   status: MatchStatus;
   started_at: string | null;
   ended_at: string | null;
   playback: Playback | null;
+  recording_status: RecordingStatus;
+  vod: Vod | null;
 }
 
 export function formatTime(seconds: number): string {

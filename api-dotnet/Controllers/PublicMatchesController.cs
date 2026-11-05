@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PitchWise.Api.Dtos;
 using PitchWise.Api.Services;
+using PitchWise.Data.Models;
 using PitchWise.Data;
 
 namespace PitchWise.Api.Controllers;
@@ -19,6 +20,13 @@ public class PublicMatchesController(AppDbContext db, MatchMapper mapper) : Cont
         var match = await db.Matches.AsNoTracking().FirstOrDefaultAsync(m => m.PublicId == publicId, ct);
         if (match is null) return NotFound(new { detail = "Match not found" });
 
-        return new PublicMatchOut(match.Name, match.Status, match.StartedAt, match.EndedAt, mapper.Playback(match));
+        // Until the switcher makes one program, what viewers get afterwards is the input on air at the end.
+        var recording = match.Status == MatchStatus.Ended && match.ProgramInputId is { } inputId
+            ? await db.Videos.AsNoTracking().FirstOrDefaultAsync(v => v.MatchInputId == inputId, ct)
+            : null;
+
+        return new PublicMatchOut(
+            match.Name, match.Status, match.StartedAt, match.EndedAt, mapper.Playback(match), match.RecordingStatus,
+            recording is null ? null : mapper.Vod(recording));
     }
 }

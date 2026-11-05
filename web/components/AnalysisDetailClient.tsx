@@ -15,6 +15,7 @@ import {
 import { QuickActions } from "./QuickActions";
 import { EventResultsPanel } from "./EventResultsPanel";
 import { HlsPlayer } from "./HlsPlayer";
+import { useSkipGaps } from "./useSkipGaps";
 
 const SPORT_LABELS: Record<string, string> = {
   football: "⚽ Football",
@@ -52,6 +53,7 @@ export function AnalysisDetailClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeVideo = videos.find((v) => v.id === activeVideoId) ?? null;
+  useSkipGaps(videoRef, activeVideo?.gaps, activeVideoId);
 
   function seekVideo(seconds: number) {
     if (videoRef.current) {

@@ -81,3 +81,12 @@ public class HighlightStatusJsonConverter : JsonConverter<HighlightStatus>
     public override void Write(Utf8JsonWriter writer, HighlightStatus value, JsonSerializerOptions o)
         => writer.WriteStringValue(EnumMap.HighlightToDb(value));
 }
+
+public class RecordingStatusJsonConverter : JsonConverter<RecordingStatus>
+{
+    public override RecordingStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        EnumMap.RecordingFromDb(reader.GetString() ?? "");
+
+    public override void Write(Utf8JsonWriter writer, RecordingStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(EnumMap.RecordingToDb(value));
+}

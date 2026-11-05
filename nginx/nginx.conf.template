@@ -81,6 +81,23 @@ server {
         add_header Cross-Origin-Resource-Policy "cross-origin" always;
     }
 
+    # A finished recording, straight from disk, which also handles the Range requests of seeking.
+    # The signature is in the path, as it is for live streams. Only the vod directory is mounted,
+    # and this pattern is the only way into it, so nothing else on disk can be reached.
+    location ~ "^/vod/(?<vod_md5>[^/]+)/(?<vod_exp>[0-9]+)/(?<vod_file>rec_[0-9a-f]{32}\.mp4)$" {
+        secure_link $vod_md5,$vod_exp;
+        secure_link_md5 "$secure_link_expires /vod/$vod_file ${HLS_SIGNING_SECRET}";
+        if ($secure_link = "")  { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        alias /srv/vod/$vod_file;
+        types {
+            video/mp4 mp4;
+        }
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+    }
+
     # The manifest carries the signature in the query string (minted by the API).
     # Validate it, then rewrite the segment lines to carry the same signature so the
     # player fetches each segment already signed.
