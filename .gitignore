@@ -11,6 +11,11 @@ venv/
 # data / media
 /data/
 /storage/
+# Used when the API and worker run outside Docker. Only the empty hls folder is tracked.
+/.dev-storage/*
+!/.dev-storage/hls/
+/.dev-storage/hls/*
+!/.dev-storage/hls/.gitkeep
 *.mp4
 *.mov
 *.mkv
@@ -40,7 +45,6 @@ api-dotnet/bin/
 api-dotnet/obj/
 
 # IDE / OS
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db

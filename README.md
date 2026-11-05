@@ -107,16 +107,63 @@ Send `X-Api-Key` on everything except health checks, share links and admin calls
 | `GET /api/analyses/{id}/highlights/{hid}/hls` | Signed HLS URL for the reel |
 | `POST /api/analyses/{id}/highlights/{hid}/share` | Create a public link |
 
-## Tests
+## Develop
+
+Run the backing services in Docker and the code on your machine, so you can set breakpoints. Needs
+the .NET 10 SDK, Node 22, ffmpeg and Docker. Stop the full stack first with `docker compose down`,
+as both use the same ports.
+
+**Infrastructure:** Postgres, Redis, MediaMTX and the nginx edge.
+
+```bash
+docker compose -f docker-compose.infra.yml up -d --wait
+```
+
+**API**, in its own terminal. It applies migrations on startup and creates the tenant for `demo-key`.
+
+```bash
+dotnet run --project api-dotnet
+```
+
+**Worker**, in its own terminal. It renders highlight reels with the local ffmpeg.
+
+```bash
+dotnet run --project worker-dotnet/PitchWise.Worker
+```
+
+**Web console**, in its own terminal, at http://localhost:3000. `WEB_API_KEY` is the key that the
+console adds to its calls to the API. Without it, every call gets a `401`.
+
+```bash
+cd web
+npm ci
+WEB_API_KEY=demo-key npm run dev
+```
+
+The [live stream steps](#try-a-live-stream) above work the same way against this setup. Files go to
+`.dev-storage/`, not `storage/`, because the full stack creates `storage/` as root.
+
+**Debugging in VS Code:** with the C# extension, open the Run and Debug view and start **API**, then
+**Worker** and **Web console**. **API** brings the infrastructure up and builds first. The tasks
+`infra: up`, `infra: down`, `build` and `test` are in `.vscode/tasks.json`.
+
+Good to know:
+
+- MediaMTX runs in a container and calls the API to check stream keys, so the API listens on
+  `0.0.0.0:8000`. On a machine your network can reach, anyone there can reach this API too.
+- If streams are refused with the API running, a firewall may be blocking containers from reaching
+  the host on port 8000.
+- `docker compose -f docker-compose.infra.yml down -v` also deletes the development database.
+
+### Tests
 
 ```bash
 dotnet test PitchWise.slnx
 ```
 
 Integration tests run the real API and migrations against Postgres and Redis containers from
-Testcontainers, so they need Docker. On rootless Podman, set
-`DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` and `TESTCONTAINERS_RYUK_DISABLED=true`.
-MediaMTX is faked in these tests. CI also builds every image.
+Testcontainers, so they need Docker, but not the infrastructure above. MediaMTX is faked in these
+tests. CI also builds every image.
 
 To change the schema:
 

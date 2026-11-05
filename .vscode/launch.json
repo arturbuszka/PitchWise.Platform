@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "infra and build",
+      "program": "${workspaceFolder}/api-dotnet/bin/Debug/net10.0/PitchWise.Api.dll",
+      "cwd": "${workspaceFolder}/api-dotnet",
+      "launchSettingsProfile": "http",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Worker",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/worker-dotnet/PitchWise.Worker/bin/Debug/net10.0/PitchWise.Worker.dll",
+      "cwd": "${workspaceFolder}/worker-dotnet/PitchWise.Worker",
+      "launchSettingsProfile": "worker",
+      "console": "internalConsole"
+    },
+    {
+      "name": "Web console",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/web",
+      "env": {
+        "WEB_API_KEY": "demo-key"
+      }
+    }
+  ]
+}

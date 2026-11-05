@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "PitchWise.slnx"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "infra: up",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "docker-compose.infra.yml", "up", "-d", "--wait"],
+      "problemMatcher": []
+    },
+    {
+      "label": "infra: down",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "docker-compose.infra.yml", "down"],
+      "problemMatcher": []
+    },
+    {
+      "label": "infra and build",
+      "dependsOrder": "sequence",
+      "dependsOn": ["infra: up", "build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "PitchWise.slnx"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}
