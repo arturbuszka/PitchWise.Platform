@@ -5,9 +5,11 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
-      "applicationUrl": "http://localhost:8000",
+      "applicationUrl": "http://0.0.0.0:8000",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "BOOTSTRAP_API_KEY": "demo-key",
+        "STORAGE_DIR": "../.dev-storage"
       }
     }
   }

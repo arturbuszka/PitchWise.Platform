@@ -1,3 +1,7 @@
+# What the API, worker and web console need when they run outside Docker, for debugging.
+# See "Develop" in the README. Stop the full stack first: both use the same ports.
+name: pitchwise-dev
+
 services:
   postgres:
     image: postgres:16
@@ -6,7 +10,7 @@ services:
       POSTGRES_PASSWORD: pitchwise
       POSTGRES_DB: pitchwise
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +22,37 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+
+  mediamtx:
+    image: docker.io/bluenviron/mediamtx:1.21.3
+    ports:
+      - "1935:1935"
+      # The API on the host polls this to see which streams are live.
+      - "127.0.0.1:9997:9997"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # MediaMTX asks the API on the host who may publish.
+      MTX_AUTHHTTPADDRESS: "http://host.docker.internal:8000/internal/mediamtx/auth/devsecret"
+      MTX_HLSCDNSECRET: "devsecret"
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro,z
+
+  nginx:
+    image: nginx:1.27
+    ports:
+      - "8080:80"
+    environment:
+      HLS_SIGNING_SECRET: "devsecret"
+      MEDIAMTX_CDN_SECRET: "devsecret"
+      NGINX_ENVSUBST_FILTER: "HLS_SIGNING_SECRET|MEDIAMTX_CDN_SECRET"
+    volumes:
+      # Tracked in git, so Docker doesn't create it as root and block the API on the host.
+      - ./.dev-storage/hls:/srv/hls:ro,z
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
+    depends_on:
+      - mediamtx
 
 volumes:
   pgdata:

@@ -43,3 +43,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build all images
         run: docker compose build
+      - name: Check the development Compose file
+        run: docker compose -f docker-compose.infra.yml config --quiet
