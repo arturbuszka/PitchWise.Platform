@@ -190,7 +190,8 @@ Good to know:
   the host on port 8000.
 - If port 8080 is taken, start the infrastructure with `EDGE_PORT=8081` and the API with
   `HLS_BASE_URL=http://localhost:8081`.
-- `docker compose -f docker-compose.infra.yml down -v` also deletes the development database.
+- `docker compose -f docker-compose.infra.yml down -v` also deletes the development database. The
+  project name in that file is fixed, so every clone of this repo shares that one database.
 
 ### Tests
 
