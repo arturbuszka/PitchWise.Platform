@@ -171,19 +171,26 @@ public class ClipPlannerTests
     [Fact]
     public void StopsAtAGapAfterTheEvent()
     {
-        Assert.Equal((42.0, 49.0), ClipPlanner.Plan(48, 6, 4, Gap(49, 65)));
+        Assert.Equal((42.0, 48.75), ClipPlanner.Plan(48, 6, 4, Gap(49, 65)));
     }
 
     [Fact]
     public void StartsAfterAGapBeforeTheEvent()
     {
-        Assert.Equal((65.0, 70.0), ClipPlanner.Plan(66, 6, 4, Gap(49, 65)));
+        Assert.Equal((65.25, 70.0), ClipPlanner.Plan(66, 6, 4, Gap(49, 65)));
     }
 
     [Fact]
     public void EventInsideAGap_MovesToWhenThePictureReturns()
     {
-        Assert.Equal((65.0, 69.0), ClipPlanner.Plan(55, 6, 4, Gap(49, 65)));
+        Assert.Equal((65.25, 69.25), ClipPlanner.Plan(55, 6, 4, Gap(49, 65)));
+    }
+
+    [Fact]
+    public void EventRightBesideAGap_StaysInsideItsClip()
+    {
+        Assert.Equal((43.0, 49.0), ClipPlanner.Plan(49, 6, 4, Gap(49.1, 65)));
+        Assert.Equal((65.1, 69.1), ClipPlanner.Plan(65.1, 6, 4, Gap(49, 65)));
     }
 
     [Fact]

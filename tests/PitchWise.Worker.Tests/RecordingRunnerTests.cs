@@ -146,6 +146,41 @@ public sealed class RecordingRunnerTests : IAsyncLifetime
         Assert.StartsWith(_settings.VodDir, path);
     }
 
+    // Before GapMargin, a clip that ended at a gap took on the gap's length, and every clip after it
+    // in a reel started that much later, with one frame held in between.
+    [Fact]
+    public async Task Clips_OnEitherSideOfAGap_DontTakeOnItsLength()
+    {
+        var (match, program, _) = await EndedMatch();
+        WriteSegment(program.Id, 0, 10);
+        WriteSegment(program.Id, 40, 10);
+        await _runner.RunAsync(match.Id, default);
+        var video = (await VideoOf(program.Id))!;
+        var path = _settings.VideoPath(video);
+
+        var clips = new List<string>();
+        foreach (var moment in new[] { 9.0, 41.0, 25.0 })
+        {
+            var (start, end) = ClipPlanner.Plan(moment, 6, 4, video.Gaps);
+            var clip = Path.Combine(_settings.ClipsDir, $"clip{moment}.mp4");
+            Assert.True(FfmpegTools.ExtractClip(path, clip, start, end));
+            clips.Add(clip);
+            Assert.All(video.Gaps, gap => Assert.True(end <= gap.Start || start >= gap.End));
+        }
+
+        var durations = clips.Select(Duration).ToList();
+        Assert.InRange(durations[0], 5.0, 9.0);
+        Assert.InRange(durations[1], 4.0, 7.0);
+        Assert.InRange(durations[2], 3.5, 6.0);
+
+        var reel = Path.Combine(_settings.ClipsDir, "reel.mp4");
+        Assert.True(FfmpegTools.ConcatClips(clips, reel));
+        Assert.InRange(Duration(reel), durations.Sum() - 1, durations.Sum() + 1);
+    }
+
+    private static double Duration(string path) => double.Parse(
+        Tool("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path), CultureInfo.InvariantCulture);
+
     [Fact]
     public async Task EveryInput_GetsItsOwnVideo_OnTheSameTimeline()
     {
