@@ -6,6 +6,9 @@ import { Gap } from "@/lib/api";
 // A recording keeps its signal gaps, so its positions stay on the match timeline. Left alone, a
 // player would hold the last frame for as long as a gap lasts, so this moves past them instead.
 // Positions are unaffected: a moment after a gap is at the same time as it would be without this.
+// Landing exactly on the end of a gap can leave the picture from before it on screen.
+const PAST_GAP = 0.05;
+
 export function useSkipGaps(videoRef: RefObject<HTMLVideoElement | null>, gaps: Gap[] | undefined, reloadKey?: unknown) {
   useEffect(() => {
     const video = videoRef.current;
@@ -13,7 +16,7 @@ export function useSkipGaps(videoRef: RefObject<HTMLVideoElement | null>, gaps: 
 
     const skip = () => {
       const gap = gaps.find((g) => video.currentTime >= g.start && video.currentTime < g.end);
-      if (gap) video.currentTime = gap.end;
+      if (gap) video.currentTime = gap.end + PAST_GAP;
     };
 
     video.addEventListener("timeupdate", skip);
