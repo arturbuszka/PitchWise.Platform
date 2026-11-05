@@ -7,6 +7,10 @@ const API =
     ? process.env.API_INTERNAL_URL || "http://localhost:8000"
     : "");
 
+// For addresses a browser opens itself, such as a <video src>. Server rendering writes these into
+// the page too, so they must never be the server's own address, which browsers can't reach.
+const BROWSER_API = process.env.NEXT_PUBLIC_API_URL || "";
+
 function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   if (typeof window !== "undefined") return fetch(input, init);
   return fetch(input, {
@@ -202,7 +206,7 @@ export const api = {
           xhr.send(fd);
         }),
       streamUrl: (analysisId: number, videoId: number) =>
-        `${API}/api/analyses/${analysisId}/videos/${videoId}/stream`,
+        `${BROWSER_API}/api/analyses/${analysisId}/videos/${videoId}/stream`,
     },
 
     highlights: {
@@ -217,7 +221,7 @@ export const api = {
           r.ok ? r.json() : null
         ),
       streamUrl: (analysisId: number, id: number) =>
-        `${API}/api/analyses/${analysisId}/highlights/${id}/stream`,
+        `${BROWSER_API}/api/analyses/${analysisId}/highlights/${id}/stream`,
       // Signed HLS manifest URL (served by the nginx edge, not the API). null if not ready.
       hlsUrl: (analysisId: number, id: number): Promise<HlsUrl | null> =>
         apiFetch(`${API}/api/analyses/${analysisId}/highlights/${id}/hls`, { cache: "no-store" }).then((r) =>
@@ -237,7 +241,7 @@ export const api = {
         status: r.status,
         data: r.ok ? ((await r.json()) as SharePublic) : null,
       })),
-    streamUrl: (token: string) => `${API}/api/share/${token}/stream`,
+    streamUrl: (token: string) => `${BROWSER_API}/api/share/${token}/stream`,
     // Signed HLS manifest URL for public viewers (edge-served, cached). null if not ready.
     hlsUrl: (token: string): Promise<HlsUrl | null> =>
       apiFetch(`${API}/api/share/${token}/hls`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
