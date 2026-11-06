@@ -26,6 +26,8 @@ services:
 
   mediamtx:
     image: docker.io/bluenviron/mediamtx:1.21.3
+    # The worker on the host has to be able to delete the segments this writes.
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
     ports:
       - "1935:1935"
       - "8890:8890/udp"
@@ -39,6 +41,7 @@ services:
       MTX_HLSCDNSECRET: "devsecret"
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro,z
+      - ./.dev-storage/recordings:/recordings:z
 
   nginx:
     image: nginx:1.27
@@ -51,6 +54,7 @@ services:
     volumes:
       # Tracked in git, so Docker doesn't create it as root and block the API on the host.
       - ./.dev-storage/hls:/srv/hls:ro,z
+      - ./.dev-storage/vod:/srv/vod:ro,z
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
     depends_on:
       - mediamtx

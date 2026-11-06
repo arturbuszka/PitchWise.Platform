@@ -24,6 +24,18 @@ public class Video
     public double? Fps { get; set; }
     public int Order { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // Set when this is the recording of a match input rather than an upload.
+    public Guid? MatchInputId { get; set; }
+    // Parts of a recording with no signal. The file keeps them as holes, so its positions stay on
+    // the match timeline. Empty for uploads.
+    public List<TimelineGap> Gaps { get; set; } = [];
+}
+
+// A stretch of the match timeline, in seconds, during which an input sent nothing.
+public class TimelineGap
+{
+    public double Start { get; set; }
+    public double End { get; set; }
 }
 
 public class Event
@@ -33,6 +45,8 @@ public class Event
     public int? VideoId { get; set; }
     public EventType Type { get; set; }
     public EventSource Source { get; set; }
+    // On the match timeline for a match: seconds since Match.StartedAt, with signal gaps counted.
+    // That is also the position in any of the match's recordings.
     public double TimestampSeconds { get; set; }
     public double? Confidence { get; set; }
     public string? Label { get; set; }
@@ -96,9 +110,11 @@ public class Match
     // Where the match's events and highlights live, so a broadcast and a recording share one model.
     public int AnalysisId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    // When the program signal first arrived: time zero of the broadcast.
+    // When the program signal first arrived: time zero of the match timeline.
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
+    public RecordingStatus RecordingStatus { get; set; } = RecordingStatus.None;
+    public string? RecordingError { get; set; }
 }
 
 // One signal coming into a match, usually a camera. An encoder publishes to it over RTMP or SRT.

@@ -45,6 +45,15 @@ public enum MatchStatus
     Ended,
 }
 
+// What became of a match's recordings, which are put together once the match has ended.
+public enum RecordingStatus
+{
+    None,       // not ended yet, or nothing was received
+    Processing,
+    Ready,
+    Failed,     // at least one input could not be put together; its raw segments are kept
+}
+
 // What is arriving on an input right now. Not stored: it comes from polling MediaMTX.
 public enum SignalState
 {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { InputAccess, Match, MatchInput, Playback, Signal, api } from "@/lib/api";
+import { InputAccess, Match, MatchInput, Playback, RecordingStatus, Signal, api } from "@/lib/api";
 import { ConsoleHeader } from "./ConsoleHeader";
 import { HlsPlayer } from "./HlsPlayer";
 import { MatchStatusBadge } from "./MatchStatusBadge";
@@ -90,6 +90,8 @@ export function MatchPanel({ id }: { id: string }) {
     return act(async () => setMatch(await api.matches.end(id)));
   };
 
+  const handleRetryRecording = () => act(async () => setMatch(await api.matches.retryRecording(id)));
+
   if (missing) {
     return (
       <div className="min-h-screen">
@@ -174,6 +176,8 @@ export function MatchPanel({ id }: { id: string }) {
           </div>
         </section>
 
+        {ended && <RecordingCard match={match} onRetry={handleRetryRecording} />}
+
         <section className="bg-white border border-[#eaecf0] rounded-xl p-4 flex flex-col gap-3">
           <h2 className="text-[15px] font-bold">Share</h2>
           <Field label="Public page" value={match.public_url} />
@@ -183,11 +187,34 @@ export function MatchPanel({ id }: { id: string }) {
             <Link href={`/analyses/${match.analysis_id}`} className="text-[#2f5fe0] hover:underline">
               this match&apos;s analysis
             </Link>
-            . It has no video until recording arrives or you upload one.
+            . Each input is recorded, and its video arrives there once the match has ended.
           </p>
         </section>
       </main>
     </div>
+  );
+}
+
+const RECORDING_MESSAGE: Record<RecordingStatus, string> = {
+  none: "Nothing was recorded, because no signal arrived.",
+  processing: "Joining the recording. This takes a few minutes at most, and needs no action.",
+  ready: "The recording is ready, on the public page and in this match's analysis.",
+  failed: "The recording could not be finished. Nothing is lost: its raw files are kept, so you can try again.",
+};
+
+function RecordingCard({ match, onRetry }: { match: Match; onRetry: () => void }) {
+  const status = match.recording_status;
+  return (
+    <section className="bg-white border border-[#eaecf0] rounded-xl p-4 flex flex-col gap-2">
+      <h2 className="text-[15px] font-bold">Recording</h2>
+      <p className="text-[13px] text-[#6b7280]">{RECORDING_MESSAGE[status]}</p>
+      {match.recording_error && <p className="text-[13px] text-red-600">{match.recording_error}</p>}
+      {status === "failed" && (
+        <button onClick={onRetry} className="self-start text-[13px] font-semibold text-[#2f5fe0] hover:underline">
+          Try again
+        </button>
+      )}
+    </section>
   );
 }
 

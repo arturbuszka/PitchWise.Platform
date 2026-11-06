@@ -1,4 +1,4 @@
-# RTMP or SRT in, HLS out. Only publishing and the API call below are open to the outside: the
+# RTMP or SRT in, HLS and recordings out. Only publishing and the API call below are open to the outside: the
 # HLS port is reached through the nginx edge, and the control API only from inside the deployment.
 logLevel: info
 
@@ -31,4 +31,15 @@ rtsp: no
 webrtc: no
 
 paths:
-  '~^live/[0-9a-f-]{36}$': {}
+  '~^live/[0-9a-f-]{36}$':
+    # Every input, not only the one on air: analysis needs the wide view whatever viewers are watching.
+    record: yes
+    # Unix time, so the name means the same in any time zone. The worker places each file by it.
+    recordPath: /recordings/%path/%s-%f
+    # fMP4 stays readable after a crash, losing at most the last part.
+    recordFormat: fmp4
+    recordPartDuration: 1s
+    # Each file is placed by the clock, so this also limits how long the timeline can drift from it.
+    recordSegmentDuration: 60s
+    # The default would delete a match's video after a day. The worker removes segments once joined.
+    recordDeleteAfter: 0s

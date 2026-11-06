@@ -275,6 +275,15 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("public_id");
 
+                    b.Property<string>("RecordingError")
+                        .HasColumnType("text")
+                        .HasColumnName("recording_error");
+
+                    b.Property<string>("RecordingStatus")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("recording_status");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -391,6 +400,10 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("fps");
 
+                    b.Property<Guid?>("MatchInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_input_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -403,6 +416,9 @@ namespace PitchWise.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AnalysisId");
+
+                    b.HasIndex("MatchInputId")
+                        .IsUnique();
 
                     b.ToTable("video", (string)null);
                 });
@@ -451,6 +467,38 @@ namespace PitchWise.Data.Migrations
                         .HasForeignKey("MatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.Video", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.MatchInput", null)
+                        .WithMany()
+                        .HasForeignKey("MatchInputId");
+
+                    b.OwnsMany("PitchWise.Data.Models.TimelineGap", "Gaps", b1 =>
+                        {
+                            b1.Property<int>("VideoId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<double>("End");
+
+                            b1.Property<double>("Start");
+
+                            b1.HasKey("VideoId", "__synthesizedOrdinal");
+
+                            b1.ToTable("video");
+
+                            b1
+                                .ToJson("gaps")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("VideoId");
+                        });
+
+                    b.Navigation("Gaps");
                 });
 #pragma warning restore 612, 618
         }

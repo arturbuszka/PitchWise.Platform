@@ -14,7 +14,16 @@ public record VideoOut(
     string Name,
     double? DurationSeconds,
     double? Fps,
-    int Order);
+    int Order,
+    List<GapOut> Gaps)
+{
+    public static VideoOut From(Video v) => new(
+        v.Id, v.AnalysisId, v.Name, v.DurationSeconds, v.Fps, v.Order,
+        v.Gaps.Select(g => new GapOut(g.Start, g.End)).ToList());
+}
+
+// A part of a recording with no signal, in seconds. Players skip it.
+public record GapOut(double Start, double End);
 
 public record AnalysisListItem(
     int Id,
@@ -129,6 +138,8 @@ public record MatchOut(
     DateTime CreatedAt,
     DateTime? StartedAt,
     DateTime? EndedAt,
+    RecordingStatus RecordingStatus,
+    string? RecordingError,
     List<MatchInputOut> Inputs);
 
 // Where an encoder publishes. Only returned when a key is issued: it is stored hashed, so it cannot
@@ -147,13 +158,18 @@ public record CreatedInputOut(MatchInputOut Input, InputAccessOut Access);
 
 public record PlaybackOut(string Url, DateTime ExpiresAt, Guid InputId);
 
+// A finished recording, on the edge. Positions in it are seconds since the match started.
+public record VodOut(string Url, DateTime ExpiresAt, double? DurationSeconds, List<GapOut> Gaps);
+
 // What anyone with the public link may see, so no tenant data or keys.
 public record PublicMatchOut(
     string Name,
     MatchStatus Status,
     DateTime? StartedAt,
     DateTime? EndedAt,
-    PlaybackOut? Playback);
+    PlaybackOut? Playback,
+    RecordingStatus RecordingStatus,
+    VodOut? Vod);
 
 // --- Admin ---
 

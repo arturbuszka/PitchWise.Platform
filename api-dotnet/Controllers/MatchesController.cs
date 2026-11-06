@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PitchWise.Api.Auth;
@@ -5,6 +6,7 @@ using PitchWise.Api.Dtos;
 using PitchWise.Api.Services;
 using PitchWise.Data;
 using PitchWise.Data.Models;
+using StackExchange.Redis;
 
 namespace PitchWise.Api.Controllers;
 
@@ -12,7 +14,8 @@ namespace PitchWise.Api.Controllers;
 [ApiController]
 [Route("api/matches")]
 public class MatchesController(
-    AppDbContext db, MatchMapper mapper, IMediaMtxClient mediaMtx, ILogger<MatchesController> log) : ControllerBase
+    AppDbContext db, MatchMapper mapper, IMediaMtxClient mediaMtx, RecordingQueue recordings, ILogger<MatchesController> log)
+    : ControllerBase
 {
     private static readonly object MatchNotFound = new { detail = "Match not found" };
     private static readonly object InputNotFound = new { detail = "Input not found" };
@@ -157,12 +160,45 @@ public class MatchesController(
         {
             match.Status = MatchStatus.Ended;
             match.EndedAt = DateTime.UtcNow;
+            match.RecordingStatus = RecordingStatus.Processing;
             await db.SaveChangesAsync(ct);
 
             var inputIds = await db.MatchInputs.Where(i => i.MatchId == id).Select(i => i.Id).ToListAsync(ct);
             foreach (var inputId in inputIds) await Kick(inputId, ct);
+            await QueueRecording(id);
         }
         return await Out(match, ct);
+    }
+
+    // For a recording that failed, say on a full disk, or a job that never reached the worker. The
+    // raw segments of anything unfinished are still there, and what is finished isn't done again.
+    [HttpPost("{id:guid}/recording/retry")]
+    public async Task<ActionResult<MatchOut>> RetryRecording(Guid id, CancellationToken ct)
+    {
+        var match = await Find(id, ct);
+        if (match is null) return NotFound(MatchNotFound);
+        if (match.RecordingStatus is not (RecordingStatus.Failed or RecordingStatus.Processing))
+            return Conflict(new { detail = "There is no unfinished recording" });
+
+        match.RecordingStatus = RecordingStatus.Processing;
+        match.RecordingError = null;
+        await db.SaveChangesAsync(ct);
+        await QueueRecording(id);
+        return await Out(match, ct);
+    }
+
+    // The match is already over, so a failure here must not read as if it wasn't. The status stays
+    // "processing", which the worker picks up again when it starts and which can be retried.
+    private async Task QueueRecording(Guid id)
+    {
+        try
+        {
+            await recordings.EnqueueAsync(id);
+        }
+        catch (RedisException e)
+        {
+            log.LogWarning("Could not queue the recording of match {MatchId}: {Message}", id, e.Message);
+        }
     }
 
     // The change is already saved, so a failure here must not read as if it wasn't. An encoder can
@@ -173,7 +209,7 @@ public class MatchesController(
         {
             await mediaMtx.KickPublisherAsync(MatchInput.PathFor(inputId), ct);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             log.LogWarning("Could not disconnect the encoder on input {InputId}: {Message}", inputId, e.Message);
         }

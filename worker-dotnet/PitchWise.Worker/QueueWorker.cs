@@ -7,8 +7,8 @@ using StackExchange.Redis;
 namespace PitchWise.Worker;
 
 /// <summary>
-/// Consumer loop over the highlight Redis list. The API only LPUSHes {highlight_id}; this worker
-/// pops and dispatches.
+/// Consumer loops over the Redis job lists. The API only LPUSHes an id; this worker pops and
+/// dispatches. Each list has its own loop, so a long recording job doesn't hold up highlights.
 /// </summary>
 public sealed class QueueWorker : BackgroundService
 {
@@ -16,6 +16,7 @@ public sealed class QueueWorker : BackgroundService
     private readonly AppSettings _appSettings;
     private readonly WorkerSettings _worker;
     private readonly HighlightRunner _highlight;
+    private readonly RecordingRunner _recording;
     private readonly ILogger<QueueWorker> _log;
 
     public QueueWorker(
@@ -23,26 +24,33 @@ public sealed class QueueWorker : BackgroundService
         AppSettings appSettings,
         WorkerSettings worker,
         HighlightRunner highlight,
+        RecordingRunner recording,
         ILogger<QueueWorker> log)
     {
         _redis = redis;
         _appSettings = appSettings;
         _worker = worker;
         _highlight = highlight;
+        _recording = recording;
         _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.LogInformation("Worker listening on {highlight}", _appSettings.HighlightQueue);
+        _log.LogInformation("Worker listening on {highlight} and {recording}",
+            _appSettings.HighlightQueue, _appSettings.RecordingQueue);
 
-        await Consume(
-            _appSettings.HighlightQueue, "highlight_id",
-            (id, ct) => _highlight.RunAsync(id, ct), stoppingToken);
+        await Task.WhenAll(
+            Task.Run(() => Consume(
+                _appSettings.HighlightQueue, "highlight_id",
+                (id, ct) => _highlight.RunAsync(int.Parse(id), ct), stoppingToken), stoppingToken),
+            Task.Run(() => Consume(
+                _appSettings.RecordingQueue, "match_id",
+                (id, ct) => _recording.RunAsync(Guid.Parse(id), ct), stoppingToken), stoppingToken));
     }
 
     private async Task Consume(
-        string queue, string idField, Func<int, CancellationToken, Task> handler,
+        string queue, string idField, Func<string, CancellationToken, Task> handler,
         CancellationToken ct)
     {
         IDatabase db = _redis.GetDatabase();
@@ -69,7 +77,7 @@ public sealed class QueueWorker : BackgroundService
                 continue;
             }
 
-            int? id = ParseId(item!, idField);
+            string? id = ParseId(item!, idField);
             if (id is null)
             {
                 _log.LogWarning("Skipped invalid queue item on {queue}: {raw}", queue, (string?)item);
@@ -79,7 +87,7 @@ public sealed class QueueWorker : BackgroundService
             _log.LogInformation("Starting {field}={id}", idField, id);
             try
             {
-                await handler(id.Value, ct);
+                await handler(id, ct);
                 _log.LogInformation("Finished {field}={id}", idField, id);
             }
             catch (Exception ex)
@@ -90,16 +98,13 @@ public sealed class QueueWorker : BackgroundService
         }
     }
 
-    private static int? ParseId(string raw, string field)
+    private static string? ParseId(string raw, string field)
     {
         try
         {
             using JsonDocument doc = JsonDocument.Parse(raw);
             if (doc.RootElement.TryGetProperty(field, out JsonElement el))
-            {
-                if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out int n)) return n;
-                if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out int s)) return s;
-            }
+                return el.ValueKind == JsonValueKind.String ? el.GetString() : el.GetRawText();
         }
         catch (JsonException) { }
         return null;

@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using PitchWise.Data.Models;
 
 namespace PitchWise.Api.Tests;
 
@@ -311,6 +313,117 @@ public class MatchesTests(ApiFixture api)
 
         var unknown = await client.PostAsJsonAsync(AuthUrl, new { action = "api" });
         Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
+    }
+
+    private async Task<int> AddRecording(string matchId, string inputId, string name = "Final")
+    {
+        var analysisId = (await GetMatch(matchId)).GetProperty("analysis_id").GetInt32();
+        var videoId = 0;
+        await api.WithDb(async db =>
+        {
+            var video = new Video
+            {
+                AnalysisId = analysisId,
+                Name = name,
+                Filename = $"rec_{Guid.Parse(inputId):N}.mp4",
+                DurationSeconds = 76,
+                MatchInputId = Guid.Parse(inputId),
+                Gaps = [new TimelineGap { Start = 49, End = 65 }],
+            };
+            db.Videos.Add(video);
+            await db.SaveChangesAsync();
+            await db.Matches.Where(m => m.Id == Guid.Parse(matchId))
+                .ExecuteUpdateAsync(u => u.SetProperty(m => m.RecordingStatus, RecordingStatus.Ready));
+            videoId = video.Id;
+        });
+        return videoId;
+    }
+
+    [Fact]
+    public async Task End_QueuesTheRecording()
+    {
+        var created = await CreateMatch();
+        await api.Redis.KeyDeleteAsync(ApiFixture.RecordingQueue);
+
+        var ended = await (await api.Client.PostAsync($"/api/matches/{created.Id}/end", null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("processing", ended.GetProperty("recording_status").GetString());
+        var job = JsonDocument.Parse((string)(await api.Redis.ListRightPopAsync(ApiFixture.RecordingQueue))!);
+        Assert.Equal(created.Id, job.RootElement.GetProperty("match_id").GetString());
+
+        // ending twice doesn't queue it twice
+        await api.Client.PostAsync($"/api/matches/{created.Id}/end", null);
+        Assert.Equal(0, await api.Redis.ListLengthAsync(ApiFixture.RecordingQueue));
+    }
+
+    [Fact]
+    public async Task RetryRecording_OnlyAppliesToUnfinishedOnes()
+    {
+        var created = await CreateMatch();
+        var url = $"/api/matches/{created.Id}/recording/retry";
+
+        Assert.Equal(HttpStatusCode.Conflict, (await api.Client.PostAsync(url, null)).StatusCode);
+
+        await api.Client.PostAsync($"/api/matches/{created.Id}/end", null);
+        await api.WithDb(db => db.Matches.Where(m => m.Id == Guid.Parse(created.Id)).ExecuteUpdateAsync(u => u
+            .SetProperty(m => m.RecordingStatus, RecordingStatus.Failed)
+            .SetProperty(m => m.RecordingError, "disk full")));
+        await api.Redis.KeyDeleteAsync(ApiFixture.RecordingQueue);
+
+        var retried = await (await api.Client.PostAsync(url, null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("processing", retried.GetProperty("recording_status").GetString());
+        Assert.Equal(JsonValueKind.Null, retried.GetProperty("recording_error").ValueKind);
+        Assert.Equal(1, await api.Redis.ListLengthAsync(ApiFixture.RecordingQueue));
+
+        var other = await api.CreateTenantClient();
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PostAsync(url, null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task PublicEndpoint_OffersTheProgramRecording_SignedForTheEdge_AfterTheEnd()
+    {
+        var created = await CreateMatch();
+        var added = await (await api.Client.PostAsJsonAsync($"/api/matches/{created.Id}/inputs", new { name = "Wide" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        await AddRecording(created.Id, added.GetProperty("access").GetProperty("input_id").GetString()!);
+        await AddRecording(created.Id, created.InputId);
+        var url = $"/api/public/matches/{created.PublicId}";
+
+        // nothing before the end, even with a video there
+        Assert.Equal(JsonValueKind.Null, (await api.CreateClient().GetFromJsonAsync<JsonElement>(url)).GetProperty("vod").ValueKind);
+
+        await api.Client.PostAsync($"/api/matches/{created.Id}/end", null);
+        await api.WithDb(db => db.Matches.Where(m => m.Id == Guid.Parse(created.Id))
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.RecordingStatus, RecordingStatus.Ready)));
+        var body = await api.CreateClient().GetFromJsonAsync<JsonElement>(url);
+
+        Assert.Equal("ready", body.GetProperty("recording_status").GetString());
+        var vod = body.GetProperty("vod");
+        var file = $"rec_{Guid.Parse(created.InputId):N}.mp4";
+        var parts = new Uri(vod.GetProperty("url").GetString()!).AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(["vod", parts[1], parts[2], file], parts);
+        // the same formula as secure_link_md5 in nginx/nginx.conf.template
+        var hash = MD5.HashData(Encoding.UTF8.GetBytes($"{parts[2]} /vod/{file} {ApiFixture.HlsSecret}"));
+        Assert.Equal(Convert.ToBase64String(hash).Replace('+', '-').Replace('/', '_').TrimEnd('='), parts[1]);
+        var gap = Assert.Single(vod.GetProperty("gaps").EnumerateArray());
+        Assert.Equal(49, gap.GetProperty("start").GetDouble());
+        Assert.Equal(65, gap.GetProperty("end").GetDouble());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("playback").ValueKind);
+    }
+
+    [Fact]
+    public async Task Recording_AppearsInTheAnalysis_WithItsGaps()
+    {
+        var created = await CreateMatch();
+        var videoId = await AddRecording(created.Id, created.InputId);
+        var analysisId = created.Body.GetProperty("match").GetProperty("analysis_id").GetInt32();
+
+        var analysis = await api.Client.GetFromJsonAsync<JsonElement>($"/api/analyses/{analysisId}");
+
+        var video = Assert.Single(analysis.GetProperty("videos").EnumerateArray());
+        Assert.Equal(videoId, video.GetProperty("id").GetInt32());
+        Assert.Equal(65, video.GetProperty("gaps")[0].GetProperty("end").GetDouble());
     }
 
     // RTMP and SRT are open to the internet, and reading over them would skip the signature check.

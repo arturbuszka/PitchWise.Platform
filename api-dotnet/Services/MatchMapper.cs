@@ -24,6 +24,8 @@ public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner 
             match.CreatedAt,
             match.StartedAt,
             match.EndedAt,
+            match.RecordingStatus,
+            match.RecordingError,
             inputs.OrderBy(i => i.CreatedAt).Select(i => ToOut(match, i)).ToList());
     }
 
@@ -43,6 +45,13 @@ public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner 
             $"{rtmp}/live",
             streamName,
             $"{settings.SrtIngestUrl.TrimEnd('/')}?streamid={srtId}&pkt_size=1316");
+    }
+
+    public VodOut Vod(Video video)
+    {
+        var (url, expiresAt) = hls.SignVod(video.Filename);
+        return new VodOut(url, expiresAt.UtcDateTime, video.DurationSeconds,
+            video.Gaps.Select(g => new GapOut(g.Start, g.End)).ToList());
     }
 
     /// <summary>The signed URL of what is on air. Null unless the match is live.</summary>

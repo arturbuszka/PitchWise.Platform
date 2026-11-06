@@ -20,6 +20,7 @@ settings.RedisUrl = Environment.GetEnvironmentVariable("REDIS_URL") ?? settings.
 settings.WebOrigin = Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? settings.WebOrigin;
 settings.WebOriginAlt = Environment.GetEnvironmentVariable("WEB_ORIGIN_ALT") ?? settings.WebOriginAlt;
 settings.HighlightQueue = Environment.GetEnvironmentVariable("HIGHLIGHT_QUEUE") ?? settings.HighlightQueue;
+settings.RecordingQueue = Environment.GetEnvironmentVariable("RECORDING_QUEUE") ?? settings.RecordingQueue;
 settings.HlsBaseUrl = Environment.GetEnvironmentVariable("HLS_BASE_URL") ?? settings.HlsBaseUrl;
 settings.HlsSigningSecret = Environment.GetEnvironmentVariable("HLS_SIGNING_SECRET") ?? settings.HlsSigningSecret;
 if (int.TryParse(Environment.GetEnvironmentVariable("HLS_LINK_TTL_SECONDS"), out var hlsTtl))
@@ -42,6 +43,7 @@ builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(settings.Databa
 builder.Services.AddSingleton<IConnectionMultiplexer>(
     _ => ConnectionMultiplexer.Connect(RedisConfig(settings.RedisUrl)));
 builder.Services.AddSingleton<HighlightQueue>();
+builder.Services.AddSingleton<RecordingQueue>();
 builder.Services.AddSingleton<HlsSigner>();
 
 // --- Auth: every endpoint needs an API key unless it opts out with [AllowAnonymous] ---
@@ -77,6 +79,7 @@ builder.Services.AddControllers(o => o.Filters.Add<AnalysisAccessFilter>()).AddJ
     o.JsonSerializerOptions.Converters.Add(new EventSourceJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SessionStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new MatchStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new RecordingStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SignalStateJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new HighlightStatusJsonConverter());
 });
