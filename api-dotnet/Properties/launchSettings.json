@@ -9,7 +9,9 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "BOOTSTRAP_API_KEY": "demo-key",
-        "STORAGE_DIR": "../.dev-storage"
+        "STORAGE_DIR": "../.dev-storage",
+        "MEDIAMTX_READ_SECRET": "devsecret",
+        "OUTPUT_ENCRYPTION_KEY": "ZGV2ZWxvcG1lbnQtb25seS1kby1ub3QtdXNlLWl0ISE="
       }
     }
   }

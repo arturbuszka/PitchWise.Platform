@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PitchWise.Api.Auth;
 using PitchWise.Data.Config;
 using PitchWise.Data;
+using PitchWise.Data.Outputs;
 using PitchWise.Api.Dtos;
 using PitchWise.Api.Services;
 using StackExchange.Redis;
@@ -33,8 +34,11 @@ settings.RtmpIngestUrl = Environment.GetEnvironmentVariable("RTMP_INGEST_URL") ?
 settings.SrtIngestUrl = Environment.GetEnvironmentVariable("SRT_INGEST_URL") ?? settings.SrtIngestUrl;
 settings.MediaMtxApiUrl = Environment.GetEnvironmentVariable("MEDIAMTX_API_URL") ?? settings.MediaMtxApiUrl;
 settings.MediaMtxAuthSecret = Environment.GetEnvironmentVariable("MEDIAMTX_AUTH_SECRET") ?? settings.MediaMtxAuthSecret;
+settings.MediaMtxReadSecret = Environment.GetEnvironmentVariable("MEDIAMTX_READ_SECRET") ?? settings.MediaMtxReadSecret;
+settings.OutputEncryptionKey = Environment.GetEnvironmentVariable("OUTPUT_ENCRYPTION_KEY") ?? settings.OutputEncryptionKey;
 settings.EnsureDirs();
 builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton(new OutputKeyCipher(settings.OutputEncryptionKey));
 
 // --- DB ---
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(settings.DatabaseConnection));
@@ -80,6 +84,7 @@ builder.Services.AddControllers(o => o.Filters.Add<AnalysisAccessFilter>()).AddJ
     o.JsonSerializerOptions.Converters.Add(new SessionStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new MatchStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new RecordingStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new OutputStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SignalStateJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new HighlightStatusJsonConverter());
 });

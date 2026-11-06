@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<MatchInput> MatchInputs => Set<MatchInput>();
+    public DbSet<MatchOutput> MatchOutputs => Set<MatchOutput>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -31,6 +32,9 @@ public class AppDbContext : DbContext
 
         var recordingStatus = new ValueConverter<RecordingStatus, string>(
             v => EnumMap.RecordingToDb(v), v => EnumMap.RecordingFromDb(v));
+
+        var outputStatus = new ValueConverter<OutputStatus, string>(
+            v => EnumMap.OutputToDb(v), v => EnumMap.OutputFromDb(v));
 
         var eventType = new ValueConverter<EventType, string>(
             v => EventTypeMap.ToDb(v), v => EventTypeMap.FromDb(v));
@@ -158,6 +162,30 @@ public class AppDbContext : DbContext
             e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
         });
 
+        b.Entity<MatchOutput>(e =>
+        {
+            e.ToTable("match_output");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.MatchId).HasColumnName("match_id");
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.Url).HasColumnName("url");
+            e.Property(x => x.StreamKeyEncrypted).HasColumnName("stream_key_encrypted");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.Generation).HasColumnName("generation");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.Status).HasColumnName("status").HasConversion(outputStatus);
+            e.Property(x => x.Error).HasColumnName("error");
+            e.Property(x => x.Warning).HasColumnName("warning");
+            e.Property(x => x.Attempts).HasColumnName("attempts");
+            e.Property(x => x.NextRetryAt).HasColumnName("next_retry_at");
+            e.Property(x => x.LiveSince).HasColumnName("live_since");
+            e.Property(x => x.LastSeenAt).HasColumnName("last_seen_at");
+            e.HasIndex(x => x.MatchId);
+            e.HasIndex(x => x.Enabled);
+            e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
+        });
+
         b.Entity<Highlight>(e =>
         {
             e.ToTable("highlight");
@@ -226,6 +254,30 @@ public static class EnumMap
         "ready" => RecordingStatus.Ready,
         "failed" => RecordingStatus.Failed,
         _ => RecordingStatus.None,
+    };
+
+    public static string OutputToDb(OutputStatus v) => v switch
+    {
+        OutputStatus.WaitingForSignal => "waiting_for_signal",
+        OutputStatus.Connecting => "connecting",
+        OutputStatus.Live => "live",
+        OutputStatus.Retrying => "retrying",
+        OutputStatus.Incompatible => "incompatible",
+        OutputStatus.Failed => "failed",
+        OutputStatus.Offline => "offline",
+        _ => "stopped",
+    };
+
+    public static OutputStatus OutputFromDb(string v) => v switch
+    {
+        "waiting_for_signal" => OutputStatus.WaitingForSignal,
+        "connecting" => OutputStatus.Connecting,
+        "live" => OutputStatus.Live,
+        "retrying" => OutputStatus.Retrying,
+        "incompatible" => OutputStatus.Incompatible,
+        "failed" => OutputStatus.Failed,
+        "offline" => OutputStatus.Offline,
+        _ => OutputStatus.Stopped,
     };
 
     public static string SourceToDb(EventSource v) => v == EventSource.Auto ? "auto" : "manual";

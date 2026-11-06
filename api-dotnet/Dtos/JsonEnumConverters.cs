@@ -90,3 +90,12 @@ public class RecordingStatusJsonConverter : JsonConverter<RecordingStatus>
     public override void Write(Utf8JsonWriter writer, RecordingStatus value, JsonSerializerOptions options) =>
         writer.WriteStringValue(EnumMap.RecordingToDb(value));
 }
+
+public class OutputStatusJsonConverter : JsonConverter<OutputStatus>
+{
+    public override OutputStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        EnumMap.OutputFromDb(reader.GetString() ?? "");
+
+    public override void Write(Utf8JsonWriter writer, OutputStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(EnumMap.OutputToDb(value));
+}
