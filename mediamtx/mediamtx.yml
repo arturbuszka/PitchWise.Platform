@@ -1,5 +1,6 @@
-# RTMP or SRT in, HLS and recordings out. Only publishing and the API call below are open to the outside: the
-# HLS port is reached through the nginx edge, and the control API only from inside the deployment.
+# RTMP or SRT in, HLS, RTSP and recordings out. Only publishing and the API call below are open to the outside:
+# the HLS port is reached through the nginx edge, and the RTSP port and control API only from inside the
+# deployment. Who may do what over which protocol is decided by MediaMtxAuthController.
 logLevel: info
 
 authMethod: http
@@ -27,8 +28,15 @@ hlsAlwaysRemux: yes
 hlsSegmentCount: 7
 hlsSegmentDuration: 2s
 
-rtsp: no
+# How our own services read a signal, with a secret. TCP only, so the RTP ports stay shut. Basic auth, which
+# hands the secret to the callback: it can't check a digest. The port must not be published.
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+rtspAuthMethods: [basic]
+
 webrtc: no
+moq: no
 
 paths:
   '~^live/[0-9a-f-]{36}$':

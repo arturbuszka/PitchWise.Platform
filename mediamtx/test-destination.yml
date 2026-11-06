@@ -1,0 +1,19 @@
+# Stands in for YouTube or Twitch when trying outputs locally: takes any RTMP stream, and reports it over its API.
+logLevel: info
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+      - action: api
+api: yes
+apiAddress: :9997
+rtmp: yes
+hls: no
+rtsp: no
+srt: no
+webrtc: no
+moq: no
+paths:
+  all_others:

@@ -22,6 +22,16 @@
       "console": "internalConsole"
     },
     {
+      "name": "Broadcast",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/broadcast-dotnet/PitchWise.Broadcast/bin/Debug/net10.0/PitchWise.Broadcast.dll",
+      "cwd": "${workspaceFolder}/broadcast-dotnet/PitchWise.Broadcast",
+      "launchSettingsProfile": "broadcast",
+      "console": "internalConsole"
+    },
+    {
       "name": "Web console",
       "type": "node-terminal",
       "request": "launch",

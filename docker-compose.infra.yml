@@ -33,6 +33,8 @@ services:
       - "8890:8890/udp"
       # The API on the host polls this to see which streams are live.
       - "127.0.0.1:9997:9997"
+      # The broadcast service on the host reads signals here. Never publish this beyond the machine.
+      - "127.0.0.1:8554:8554"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

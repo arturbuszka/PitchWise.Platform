@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "broadcast": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "MEDIAMTX_READ_SECRET": "devsecret",
+        "OUTPUT_ENCRYPTION_KEY": "ZGV2ZWxvcG1lbnQtb25seS1kby1ub3QtdXNlLWl0ISE=",
+        "OUTPUTS_ALLOW_PRIVATE_TARGETS": "true"
+      }
+    }
+  }
+}
