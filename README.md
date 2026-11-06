@@ -4,8 +4,8 @@
 
 A club in a lower league has cameras, but no way to broadcast from them. PitchWise is the service
 behind that broadcast: the club creates a match, points its encoder at the address it gets, and shares
-a public page, or embeds the player on its own site. When the match ends, the same page plays the
-recording.
+a public page, or embeds the player on its own site. The same signal can go on to YouTube and Twitch. When
+the match ends, the same page plays the recording.
 
 ![Match console](docs/screenshot.png)
 
@@ -23,13 +23,16 @@ Built with ASP.NET Core 10, EF Core, PostgreSQL, Redis, MediaMTX, nginx and Next
   video, so the API never carries video bytes.
 - **Recording:** every input is recorded by itself. After the match, each one is a video in the
   match's analysis, and the public page and embed play the one that was on air.
+- **YouTube and Twitch:** each match can send what is on air to any number of RTMP destinations, without
+  re-encoding. Each runs and fails by itself, and retries with growing waits. Their keys are stored encrypted
+  and never returned.
 - **Analyses:** every match has one for marking moments and rendering a highlight reel with ffmpeg,
   from its recordings or from uploads.
 - **Multi-tenant:** each customer has an API key and can only reach their own data.
 - **Share links:** public, time-limited links to a highlight.
 
-Not built yet: sending to YouTube and Twitch, cutting between cameras without a reload, and
-live statistics. See the [roadmap](#roadmap).
+Not built yet: cutting between cameras without a reload, and live statistics. See the
+[roadmap](#roadmap).
 
 ## Architecture
 
@@ -43,8 +46,10 @@ live statistics. See the [roadmap](#roadmap).
                                            ▲ │                │ │
                                            │ ▼   segments     │ ▼ HLS
                                         Storage ◄─────────────┘ nginx edge ──► Viewers
-                                           │  finished videos    ▲  signature check + cache
-                                           └─────────────────────┘
+                                           │  finished videos │  ▲  signature check + cache
+                                           └──────────────────┼──┘
+                                                              │ RTSP, internal, with a secret
+                 PostgreSQL ◄── what is wanted ── Broadcast (one ffmpeg per destination) ──► YouTube, Twitch
 ```
 
 Decisions worth explaining:
@@ -55,8 +60,13 @@ Decisions worth explaining:
 - **The signature is in the URL path of live streams.** Relative playlist and segment URLs inherit
   it, so nothing is rewritten on the way. The cache key leaves it out, so all viewers share one
   entry per segment, and playlists are cached for a second.
-- **Reading is only allowed over HLS.** MediaMTX's RTMP and SRT ports are open to the internet for
-  encoders, and reading a stream through them would skip the edge and its signature check.
+- **Reading a signal takes either the edge or a secret on an internal port.** MediaMTX's RTMP and SRT ports
+  are open to the internet for encoders, and reading a stream through them would skip the edge and its
+  signature check, so no credentials open them for reading. Our own services read over RTSP, whose port isn't
+  published, with a secret that also works nowhere else.
+- **Destinations have their own service.** Restarting the worker to deploy a change to highlights doesn't cut
+  a broadcast. It keeps one ffmpeg process per destination, and works from what the database says is wanted, so
+  a restart picks up where it stopped. See [sending to YouTube and Twitch](#sending-to-youtube-and-twitch).
 - **Match status is polled from MediaMTX.** A missed callback or a crash on either side can't leave
   a match showing "live" forever. A dropped encoder puts the match back to `waiting` and can
   reconnect; only the customer can end a match for good.
@@ -76,7 +86,8 @@ Decisions worth explaining:
   with Range requests. The edge has only the finished videos mounted, not uploads or raw segments.
 - **Tenant checks live in one filter.** Every route under an analysis names `{analysisId}`, so a
   global filter covers them all. Other tenants get a 404, so ids can't be probed.
-- **API keys and stream keys are stored hashed**, and shown only once.
+- **API keys and stream keys are stored hashed**, and shown only once. Keys for destinations have to be sent
+  on, so they are encrypted instead (AES-256-GCM, tied to their output's id), and never returned.
 
 ## Run it
 
@@ -135,6 +146,64 @@ curl -s -X POST localhost:8000/api/admin/tenants \
   -H "X-Admin-Token: $ADMIN_TOKEN" -H 'Content-Type: application/json' -d '{"name":"Acme FC"}'
 ```
 
+## Sending to YouTube and Twitch
+
+Outputs need an encryption key for the destinations' keys, which has no default, as a key in this repo would
+protect nothing. Without it everything else works, and adding an output says what is missing.
+
+To try it without an account, use the stand-in destination included here. Private addresses like this one are
+refused unless allowed, so that customers can't aim an output at something inside the deployment:
+
+```bash
+printf 'OUTPUT_ENCRYPTION_KEY=%s\nOUTPUTS_ALLOW_PRIVATE_TARGETS=true\n' "$(openssl rand -base64 32)" >> .env
+docker compose --profile test-destination up -d --build
+```
+
+Create a match and publish to it as [above](#broadcast-a-match), then open it in the console and add a
+destination under **Destinations**, with `rtmp://test-destination:1935/live` as the server and anything as the
+key, and press **Start**. Or with the API:
+
+```bash
+curl -s -X POST localhost:8000/api/matches/<match_id>/outputs \
+  -H 'X-Api-Key: demo-key' -H 'Content-Type: application/json' \
+  -d '{"name":"Test","url":"rtmp://test-destination:1935/live","stream_key":"test-key"}'
+curl -s -X POST localhost:8000/api/matches/<match_id>/outputs/<output_id>/start -H 'X-Api-Key: demo-key'
+```
+
+To see what arrived, and then what a failed destination looks like:
+
+```bash
+docker compose exec api curl -s http://test-destination:9997/v3/paths/list
+docker compose --profile test-destination kill test-destination
+```
+
+For the real thing, leave `OUTPUTS_ALLOW_PRIVATE_TARGETS` out, and enter the server address and stream key from
+YouTube Studio or the Twitch dashboard. This has only been tested against a local server, not against YouTube or
+Twitch themselves.
+
+**The signal is sent as it arrives,** so the encoder has to use what the destination takes: H264 video and AAC
+audio. Anything else is reported with the codec's name and isn't sent, as ffmpeg would pass H265 along without
+complaint, leaving the outcome to the destination. YouTube also lists H265 and AV1, but on terms that don't hold
+for every channel. A signal with no audio is sent, with a warning.
+
+**What happens when something goes wrong,** as measured with ffmpeg as the encoder and a local server:
+
+| What happens | Result |
+|---|---|
+| Encoder disconnects, or freezes | `waiting_for_signal`, which isn't counted as a failure. Sending starts again by itself about 4 seconds after the signal returns. |
+| Another input goes on air | The destination has the new input about 4 seconds later. A break, until there is a switcher. |
+| Destination refuses or drops the connection | `retrying`, after 2, 4, 8, 16, 32 and then 60 seconds, five times over. Then `failed` until someone acts, between 6 and 7 minutes on, as each attempt takes a few seconds too. A minute of steady sending clears the count. |
+| Destination hangs without closing | ffmpeg would wait forever, so it is killed when no data has moved for 15 seconds. Detected about 24 seconds in, as network buffers take data for a while. |
+| ffmpeg is killed | As for a refused connection: back in about 5 seconds, with nothing else affected. |
+| Broadcast service crashes | Restarted by Docker, with every destination back within about 7 seconds. Nothing else is affected. |
+| Broadcast service is down | Outputs show `offline` after 15 seconds, rather than their last state. |
+| Worker, edge, console or API stop | Sending carries on. |
+| Two broadcast services | One sends and the other stands by, taking over when the first stops. A destination takes one sender per key. |
+| `OUTPUT_ENCRYPTION_KEY` missing | Adding an output returns `503`, and running ones go to `failed`, naming the variable. Nothing else is affected. |
+| `OUTPUT_ENCRYPTION_KEY` changes | Outputs go to `failed`, asking for the destination's key to be entered again. |
+
+Copying costs almost nothing: under 1% of a core per destination in testing, and about 15 MB.
+
 ## How a recording is made
 
 MediaMTX writes each input to files of about a minute in `storage/recordings/`. When the match ends, the
@@ -182,6 +251,11 @@ Send `X-Api-Key` on everything except health checks, public match data, share li
 | `GET /api/matches/{id}/playback` | Signed HLS URL of what is on air (`409` unless live) |
 | `POST /api/matches/{id}/end` | Disconnect the encoders, close the match and start joining its recordings |
 | `POST /api/matches/{id}/recording/retry` | Try again after a recording failed |
+| `POST /api/matches/{id}/outputs` | Add a destination; its key is never returned |
+| `PUT /api/matches/{id}/outputs/{outputId}` | Change its name, address or key |
+| `POST /api/matches/{id}/outputs/{outputId}/start` | Start sending, or try again at once after a failure |
+| `POST /api/matches/{id}/outputs/{outputId}/stop` | Stop sending |
+| `DELETE /api/matches/{id}/outputs/{outputId}` | Remove a destination and its key |
 | `GET /api/public/matches/{publicId}` | What the public page reads, including a signed URL of the recording; needs no key |
 | `POST /api/analyses` | Create a match |
 | `GET /api/analyses/{id}` | An analysis, with its videos and their gaps |
@@ -224,11 +298,19 @@ npm ci
 WEB_API_KEY=demo-key npm run dev
 ```
 
+**Broadcast service**, in its own terminal, if you need outputs. It runs ffmpeg locally, and reads signals from
+MediaMTX on `127.0.0.1:8554`. The API and this service get the same development-only encryption key from their
+`launchSettings.json`, along with permission to send to private addresses.
+
+```bash
+dotnet run --project broadcast-dotnet/PitchWise.Broadcast
+```
+
 The [broadcast steps](#broadcast-a-match) above work the same way against this setup. Files go to
 `.dev-storage/`, not `storage/`, because the full stack creates `storage/` as root.
 
 **Debugging in VS Code:** with the C# extension, open the Run and Debug view and start **API**, then
-**Worker** and **Web console**. **API** brings the infrastructure up and builds first. The tasks
+**Worker**, **Broadcast** and **Web console**. **API** brings the infrastructure up and builds first. The tasks
 `infra: up`, `infra: down`, `build` and `test` are in `.vscode/tasks.json`.
 
 Good to know:
@@ -252,7 +334,8 @@ dotnet test PitchWise.slnx
 
 Integration tests run the real API and migrations against Postgres and Redis containers from
 Testcontainers, so they need Docker, but not the infrastructure above. MediaMTX is faked in these
-tests. The worker tests join real files, so they need ffmpeg too. CI also builds every image.
+tests. The worker and broadcast tests run real ffmpeg, so they need it too. CI also builds every image. On a
+small machine, run one project at a time, as each starts its own containers.
 
 To change the schema:
 
@@ -263,15 +346,14 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 
 ## Roadmap
 
-1. **YouTube and Twitch:** a copy of the signal for each destination, each failing on its own.
-2. **A switcher:** an operator cuts between cameras in the console, and viewers, the recording and
+1. **A switcher:** an operator cuts between cameras in the console, and viewers, the recording and
    every destination get one program.
-3. **Analysis after the match:** a worker runs [PitchWise.Lab](https://github.com/arturbuszka/PitchWise.Lab),
+2. **Analysis after the match:** a worker runs [PitchWise.Lab](https://github.com/arturbuszka/PitchWise.Lab),
    a .NET computer vision pipeline, on a recording and stores the results. Lab is a separate process
    that receives a copy of the video and returns only data, so its failure can't stop a broadcast. It
    gets the wide input rather than the program. Lab will need to read each frame's timestamp, because
    counting frames doesn't survive a gap, or frames lost on the way.
-4. **Live analysis:** turn Lab's batch modules into streaming ones. Measured on a GTX 1660 Ti, the full
+3. **Live analysis:** turn Lab's batch modules into streaming ones. Measured on a GTX 1660 Ti, the full
    pipeline takes about 0.87 s per frame, but detection, re-identification and tracking only about
    0.15 s. Most of the rest is pitch calibration, which needn't run on every frame.
 
@@ -303,6 +385,18 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 - **Inputs aren't frame-accurate against each other.** See
   [how exact the timeline is](#how-a-recording-is-made).
 - **A full disk isn't reported.** Only the MediaMTX log shows that recording has stopped.
+- **Destinations have only been tested against a local server.** How YouTube and Twitch treat a reconnect, a
+  signal with no audio or a stream that isn't H264 is untested, and so is RTMPS.
+- **Changing the input on air breaks the stream to destinations for about 4 seconds,** as the copy has to
+  restart. The switcher removes that.
+- **Destination keys are visible to `ps` inside the broadcast container,** on ffmpeg's command line, along with
+  the secret it reads signals with. Only that container sees them, and it runs no one else's code.
+- **The check on private addresses happens before ffmpeg connects.** A name that resolves differently for
+  ffmpeg's own lookup moments later gets past it.
+- **The encryption key can't be rotated in place.** Changing it means entering each destination's key again.
+- **One broadcast service sends everything.** A second one only stands by, so its capacity is one machine's.
+- **Keys go to the destination as the address says.** Use `rtmps://` where it is offered, as plain RTMP sends
+  them unencrypted.
 - **Tested in Chromium and Firefox with ffmpeg as the encoder.** Safari, iOS, OBS and vMix haven't been
   tried with recordings. Neither has anything much longer than a few minutes.
 
