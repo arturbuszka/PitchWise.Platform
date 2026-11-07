@@ -326,6 +326,10 @@ namespace PitchWise.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("IsSwitcherProgram")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_switcher_program");
+
                     b.Property<Guid>("MatchId")
                         .HasColumnType("uuid")
                         .HasColumnName("match_id");
@@ -421,6 +425,111 @@ namespace PitchWise.Data.Migrations
                     b.HasIndex("MatchId");
 
                     b.ToTable("match_output", (string)null);
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.MatchSwitcher", b =>
+                {
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<Guid>("AudioInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("audio_input_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_retry_at");
+
+                    b.Property<Guid?>("OnAirAudioInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("on_air_audio_input_id");
+
+                    b.Property<Guid?>("OnAirVideoInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("on_air_video_input_id");
+
+                    b.Property<Guid>("ProgramInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("program_input_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("VideoInputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("video_input_id");
+
+                    b.Property<string>("Warning")
+                        .HasColumnType("text")
+                        .HasColumnName("warning");
+
+                    b.HasKey("MatchId");
+
+                    b.HasIndex("Enabled");
+
+                    b.HasIndex("ProgramInputId")
+                        .IsUnique();
+
+                    b.ToTable("match_switcher", (string)null);
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.SwitcherCut", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid?>("InputId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("input_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("origin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InputId");
+
+                    b.HasIndex("MatchId", "Id");
+
+                    b.ToTable("switcher_cut", (string)null);
                 });
 
             modelBuilder.Entity("PitchWise.Data.Models.Tenant", b =>
@@ -547,6 +656,34 @@ namespace PitchWise.Data.Migrations
 
             modelBuilder.Entity("PitchWise.Data.Models.MatchOutput", b =>
                 {
+                    b.HasOne("PitchWise.Data.Models.Match", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.MatchSwitcher", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.Match", null)
+                        .WithOne()
+                        .HasForeignKey("PitchWise.Data.Models.MatchSwitcher", "MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PitchWise.Data.Models.MatchInput", null)
+                        .WithOne()
+                        .HasForeignKey("PitchWise.Data.Models.MatchSwitcher", "ProgramInputId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.SwitcherCut", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.MatchInput", null)
+                        .WithMany()
+                        .HasForeignKey("InputId");
+
                     b.HasOne("PitchWise.Data.Models.Match", null)
                         .WithMany()
                         .HasForeignKey("MatchId")

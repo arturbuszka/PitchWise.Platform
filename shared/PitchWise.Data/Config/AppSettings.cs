@@ -52,6 +52,8 @@ public class AppSettings
     public int MediaMtxPollSeconds { get; set; } = 2;
     // What the broadcast service reads the signal with, over RTSP. Empty lets nobody read that way.
     public string MediaMtxReadSecret { get; set; } = "";
+    // Where browsers reach MediaMTX for the operator's low-delay previews.
+    public string WebRtcBaseUrl { get; set; } = "http://localhost:8889";
     // Base64 of 32 bytes. Empty means outputs can't be set up; everything else works without it.
     public string OutputEncryptionKey { get; set; } = "";
 

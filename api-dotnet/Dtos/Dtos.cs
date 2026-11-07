@@ -158,7 +158,32 @@ public record MatchOut(
     RecordingStatus RecordingStatus,
     string? RecordingError,
     List<MatchInputOut> Inputs,
-    List<OutputOut> Outputs);
+    List<OutputOut> Outputs,
+    SwitcherOut? Switcher);
+
+// Null fields for what is on air mean the slate: a black picture, or silence.
+public record SwitcherOut(
+    SwitcherStatus Status,
+    string? Error,
+    string? Warning,
+    int Attempts,
+    DateTime? NextRetryAt,
+    Guid ProgramInputId,
+    Guid VideoInputId,
+    Guid AudioInputId,
+    Guid? OnAirVideoInputId,
+    Guid? OnAirAudioInputId,
+    SignalOut ProgramSignal);
+
+public record SwitchToIn(Guid InputId);
+
+// MatchSeconds is on the match timeline, so it is also the position in the match's recordings.
+public record SwitcherCutOut(long Id, SwitcherCutKind Kind, Guid? InputId, SwitcherCutOrigin Origin, DateTime At, double? MatchSeconds);
+
+public record PreviewOut(DateTime ExpiresAt, List<PreviewSourceOut> Sources);
+
+// A WHEP address, already signed. Empty input id: the program.
+public record PreviewSourceOut(Guid InputId, string WhepUrl);
 
 // Where an encoder publishes. Only returned when a key is issued: it is stored hashed, so it cannot
 // be shown again. OBS asks for the RTMP server and stream name separately.

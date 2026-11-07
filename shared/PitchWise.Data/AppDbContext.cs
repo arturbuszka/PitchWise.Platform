@@ -19,6 +19,8 @@ public class AppDbContext : DbContext
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<MatchInput> MatchInputs => Set<MatchInput>();
     public DbSet<MatchOutput> MatchOutputs => Set<MatchOutput>();
+    public DbSet<MatchSwitcher> MatchSwitchers => Set<MatchSwitcher>();
+    public DbSet<SwitcherCut> SwitcherCuts => Set<SwitcherCut>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -35,6 +37,9 @@ public class AppDbContext : DbContext
 
         var outputStatus = new ValueConverter<OutputStatus, string>(
             v => EnumMap.OutputToDb(v), v => EnumMap.OutputFromDb(v));
+
+        var switcherStatus = new ValueConverter<SwitcherStatus, string>(
+            v => EnumMap.SwitcherToDb(v), v => EnumMap.SwitcherFromDb(v));
 
         var eventType = new ValueConverter<EventType, string>(
             v => EventTypeMap.ToDb(v), v => EventTypeMap.FromDb(v));
@@ -157,6 +162,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.MatchId).HasColumnName("match_id");
             e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.StreamKeyHash).HasColumnName("stream_key_hash");
+            e.Property(x => x.IsSwitcherProgram).HasColumnName("is_switcher_program");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasIndex(x => x.MatchId);
             e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
@@ -184,6 +190,47 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.MatchId);
             e.HasIndex(x => x.Enabled);
             e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
+        });
+
+        b.Entity<MatchSwitcher>(e =>
+        {
+            e.ToTable("match_switcher");
+            e.HasKey(x => x.MatchId);
+            e.Property(x => x.MatchId).HasColumnName("match_id");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.ProgramInputId).HasColumnName("program_input_id");
+            e.Property(x => x.VideoInputId).HasColumnName("video_input_id");
+            e.Property(x => x.AudioInputId).HasColumnName("audio_input_id");
+            e.Property(x => x.Status).HasColumnName("status").HasConversion(switcherStatus);
+            e.Property(x => x.Error).HasColumnName("error");
+            e.Property(x => x.Warning).HasColumnName("warning");
+            e.Property(x => x.Attempts).HasColumnName("attempts");
+            e.Property(x => x.NextRetryAt).HasColumnName("next_retry_at");
+            e.Property(x => x.OnAirVideoInputId).HasColumnName("on_air_video_input_id");
+            e.Property(x => x.OnAirAudioInputId).HasColumnName("on_air_audio_input_id");
+            e.Property(x => x.LastSeenAt).HasColumnName("last_seen_at");
+            e.HasIndex(x => x.Enabled);
+            e.HasOne<Match>().WithOne().HasForeignKey<MatchSwitcher>(x => x.MatchId);
+            e.HasOne<MatchInput>().WithOne().HasForeignKey<MatchSwitcher>(x => x.ProgramInputId);
+        });
+
+        b.Entity<SwitcherCut>(e =>
+        {
+            e.ToTable("switcher_cut");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.MatchId).HasColumnName("match_id");
+            e.Property(x => x.Kind).HasColumnName("kind").HasConversion(
+                v => v == SwitcherCutKind.Audio ? "audio" : "video",
+                v => v == "audio" ? SwitcherCutKind.Audio : SwitcherCutKind.Video);
+            e.Property(x => x.InputId).HasColumnName("input_id");
+            e.Property(x => x.Origin).HasColumnName("origin").HasConversion(
+                v => v == SwitcherCutOrigin.Automatic ? "automatic" : "operator",
+                v => v == "automatic" ? SwitcherCutOrigin.Automatic : SwitcherCutOrigin.Operator);
+            e.Property(x => x.At).HasColumnName("at");
+            e.HasIndex(x => new { x.MatchId, x.Id });
+            e.HasOne<Match>().WithMany().HasForeignKey(x => x.MatchId);
+            e.HasOne<MatchInput>().WithMany().HasForeignKey(x => x.InputId);
         });
 
         b.Entity<Highlight>(e =>
@@ -254,6 +301,26 @@ public static class EnumMap
         "ready" => RecordingStatus.Ready,
         "failed" => RecordingStatus.Failed,
         _ => RecordingStatus.None,
+    };
+
+    public static string SwitcherToDb(SwitcherStatus v) => v switch
+    {
+        SwitcherStatus.WaitingForCameras => "waiting_for_cameras",
+        SwitcherStatus.Starting => "starting",
+        SwitcherStatus.Running => "running",
+        SwitcherStatus.Restarting => "restarting",
+        SwitcherStatus.Offline => "offline",
+        _ => "stopped",
+    };
+
+    public static SwitcherStatus SwitcherFromDb(string v) => v switch
+    {
+        "waiting_for_cameras" => SwitcherStatus.WaitingForCameras,
+        "starting" => SwitcherStatus.Starting,
+        "running" => SwitcherStatus.Running,
+        "restarting" => SwitcherStatus.Restarting,
+        "offline" => SwitcherStatus.Offline,
+        _ => SwitcherStatus.Stopped,
     };
 
     public static string OutputToDb(OutputStatus v) => v switch

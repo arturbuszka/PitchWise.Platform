@@ -54,6 +54,33 @@ public class MatchStatusJsonConverter : JsonConverter<MatchStatus>
         writer.WriteStringValue(EnumMap.MatchToDb(value));
 }
 
+public class SwitcherStatusJsonConverter : JsonConverter<SwitcherStatus>
+{
+    public override SwitcherStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        EnumMap.SwitcherFromDb(reader.GetString() ?? "");
+
+    public override void Write(Utf8JsonWriter writer, SwitcherStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(EnumMap.SwitcherToDb(value));
+}
+
+public class SwitcherCutKindJsonConverter : JsonConverter<SwitcherCutKind>
+{
+    public override SwitcherCutKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString() == "audio" ? SwitcherCutKind.Audio : SwitcherCutKind.Video;
+
+    public override void Write(Utf8JsonWriter writer, SwitcherCutKind value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value == SwitcherCutKind.Audio ? "audio" : "video");
+}
+
+public class SwitcherCutOriginJsonConverter : JsonConverter<SwitcherCutOrigin>
+{
+    public override SwitcherCutOrigin Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString() == "automatic" ? SwitcherCutOrigin.Automatic : SwitcherCutOrigin.Operator;
+
+    public override void Write(Utf8JsonWriter writer, SwitcherCutOrigin value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value == SwitcherCutOrigin.Automatic ? "automatic" : "operator");
+}
+
 public class SignalStateJsonConverter : JsonConverter<SignalState>
 {
     public override SignalState Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>

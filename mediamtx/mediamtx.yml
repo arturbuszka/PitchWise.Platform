@@ -35,7 +35,13 @@ rtspAddress: :8554
 rtspTransports: [tcp]
 rtspAuthMethods: [basic]
 
-webrtc: no
+# Only for the operator's previews, which HLS is too slow for. The callback refuses anything without an address
+# the API signed. Media goes over this one UDP port. Browsers get video only, as WebRTC doesn't carry AAC.
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: no
 moq: no
 
 paths:

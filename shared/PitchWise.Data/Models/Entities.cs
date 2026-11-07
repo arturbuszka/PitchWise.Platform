@@ -167,8 +167,58 @@ public class MatchOutput
         LiveSince = null;
     }
 
-    // The one place that says what an output sends. The switcher's program replaces the input on air here.
+    // The one place that says what an output sends. With a switcher, the input on air is its program.
     public static string SourcePathFor(Match match) => MatchInput.PathFor(match.ProgramInputId.GetValueOrDefault());
+}
+
+// Cuts between a match's cameras in our own panel. The program it makes is an input of the match, hidden from the
+// list of cameras, so the public page, the recording and the outputs take it like any other. Without one of these,
+// the club sends a ready program from its own OBS or vMix. The API writes what is wanted, and the broadcast service
+// writes what is happening.
+public class MatchSwitcher
+{
+    public Guid MatchId { get; set; }
+    public bool Enabled { get; set; }
+    public Guid ProgramInputId { get; set; }
+    public Guid VideoInputId { get; set; }
+    // One source of sound, chosen by itself, so that sound needn't jump with each cut.
+    public Guid AudioInputId { get; set; }
+
+    public SwitcherStatus Status { get; set; } = SwitcherStatus.Stopped;
+    public string? Error { get; set; }
+    public string? Warning { get; set; }
+    // Restarts since it last ran steadily.
+    public int Attempts { get; set; }
+    public DateTime? NextRetryAt { get; set; }
+    // Null while the slate is on air: a black picture for video, silence for audio.
+    public Guid? OnAirVideoInputId { get; set; }
+    public Guid? OnAirAudioInputId { get; set; }
+    // When the broadcast service last looked after it, so a dead service doesn't pass for a running switcher.
+    public DateTime? LastSeenAt { get; set; }
+
+    public void Stop()
+    {
+        Enabled = false;
+        Status = SwitcherStatus.Stopped;
+        Error = null;
+        Warning = null;
+        Attempts = 0;
+        NextRetryAt = null;
+        OnAirVideoInputId = null;
+        OnAirAudioInputId = null;
+    }
+}
+
+// One change of what is on air, kept for the operator and for going through the match afterwards.
+public class SwitcherCut
+{
+    public long Id { get; set; }
+    public Guid MatchId { get; set; }
+    public SwitcherCutKind Kind { get; set; }
+    // Null when the slate took over.
+    public Guid? InputId { get; set; }
+    public SwitcherCutOrigin Origin { get; set; }
+    public DateTime At { get; set; }
 }
 
 // One signal coming into a match, usually a camera. An encoder publishes to it over RTMP or SRT.
@@ -178,6 +228,8 @@ public class MatchInput
     public Guid MatchId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string StreamKeyHash { get; set; } = string.Empty;
+    // The program a switcher publishes, rather than a camera. Operators don't see or choose it as an input.
+    public bool IsSwitcherProgram { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // The MediaMTX path of an input. Its id, not a secret: publishing also needs the stream key.

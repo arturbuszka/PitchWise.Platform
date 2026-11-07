@@ -23,8 +23,11 @@ builder.Services.AddSingleton<IOutputProcessFactory, FfmpegOutputFactory>();
 builder.Services.AddSingleton<ITargetGuard, TargetGuard>();
 builder.Services.AddSingleton<SingleInstanceLock>();
 builder.Services.AddSingleton<OutputSupervisor>();
+builder.Services.AddSingleton<ISwitcherProcessFactory, PythonSwitcherFactory>();
+builder.Services.AddSingleton<SwitcherSupervisor>();
 builder.Services.AddHostedService<BroadcastService>();
-// Time for ffmpeg to close its connections, which a stop request allows two seconds each.
+builder.Services.AddHostedService<SwitcherListener>();
+// Time for ffmpeg and switchers to close their connections, which a stop request allows two seconds each.
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(8));
 
 builder.Build().Run();

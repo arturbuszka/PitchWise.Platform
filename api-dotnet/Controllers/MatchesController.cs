@@ -54,7 +54,7 @@ public class MatchesController(
         await transaction.CommitAsync(ct);
 
         return CreatedAtAction(nameof(Get), new { id = match.Id },
-            new CreatedMatchOut(mapper.ToOut(match, [input], []), mapper.Access(input.Id, streamKey)));
+            new CreatedMatchOut(mapper.ToOut(match, [input], [], null), mapper.Access(input.Id, streamKey)));
     }
 
     [HttpGet]
@@ -71,7 +71,8 @@ public class MatchesController(
             .ToLookup(i => i.MatchId);
         var outputs = (await db.MatchOutputs.AsNoTracking().Where(o => ids.Contains(o.MatchId)).ToListAsync(ct))
             .ToLookup(o => o.MatchId);
-        return matches.Select(m => mapper.ToOut(m, inputs[m.Id], outputs[m.Id])).ToList();
+        var switchers = await db.MatchSwitchers.AsNoTracking().Where(s => ids.Contains(s.MatchId)).ToDictionaryAsync(s => s.MatchId, ct);
+        return matches.Select(m => mapper.ToOut(m, inputs[m.Id], outputs[m.Id], switchers.GetValueOrDefault(m.Id))).ToList();
     }
 
     [HttpGet("{id:guid}")]
@@ -124,7 +125,7 @@ public class MatchesController(
         if (match is null) return NotFound(MatchNotFound);
         if (match.Status == MatchStatus.Ended) return Conflict(MatchEnded);
 
-        var input = await db.MatchInputs.FirstOrDefaultAsync(i => i.Id == inputId && i.MatchId == id, ct);
+        var input = await db.MatchInputs.FirstOrDefaultAsync(i => i.Id == inputId && i.MatchId == id && !i.IsSwitcherProgram, ct);
         if (input is null) return NotFound(InputNotFound);
 
         var streamKey = Secrets.Generate("sk_");
@@ -143,7 +144,9 @@ public class MatchesController(
         var match = await Find(id, ct);
         if (match is null) return NotFound(MatchNotFound);
         if (match.Status == MatchStatus.Ended) return Conflict(MatchEnded);
-        if (!await db.MatchInputs.AnyAsync(i => i.Id == body.InputId && i.MatchId == id, ct))
+        if (await db.MatchSwitchers.AnyAsync(s => s.MatchId == id && s.Enabled, ct))
+            return Conflict(new { detail = "The switcher decides what is on air. Cut to the input there." });
+        if (!await db.MatchInputs.AnyAsync(i => i.Id == body.InputId && i.MatchId == id && !i.IsSwitcherProgram, ct))
             return NotFound(InputNotFound);
 
         match.ProgramInputId = body.InputId;
@@ -165,6 +168,7 @@ public class MatchesController(
             match.RecordingStatus = RecordingStatus.Processing;
             // In the same write, so an ended match can't be left with outputs still wanted.
             foreach (var output in await db.MatchOutputs.Where(o => o.MatchId == id).ToListAsync(ct)) output.Stop();
+            (await db.MatchSwitchers.FirstOrDefaultAsync(s => s.MatchId == id, ct))?.Stop();
             await db.SaveChangesAsync(ct);
 
             var inputIds = await db.MatchInputs.Where(i => i.MatchId == id).Select(i => i.Id).ToListAsync(ct);
@@ -228,5 +232,6 @@ public class MatchesController(
     private async Task<MatchOut> Out(Match match, CancellationToken ct) =>
         mapper.ToOut(match,
             await db.MatchInputs.AsNoTracking().Where(i => i.MatchId == match.Id).ToListAsync(ct),
-            await db.MatchOutputs.AsNoTracking().Where(o => o.MatchId == match.Id).ToListAsync(ct));
+            await db.MatchOutputs.AsNoTracking().Where(o => o.MatchId == match.Id).ToListAsync(ct),
+            await db.MatchSwitchers.AsNoTracking().FirstOrDefaultAsync(s => s.MatchId == match.Id, ct));
 }

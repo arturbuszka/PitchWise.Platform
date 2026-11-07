@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using PitchWise.Api.Dtos;
+using PitchWise.Api.Services;
 using PitchWise.Data;
 using PitchWise.Data.Config;
 using PitchWise.Data.Models;
@@ -15,7 +16,7 @@ namespace PitchWise.Api.Controllers;
 [AllowAnonymous]
 [ApiController]
 [Route("internal/mediamtx/auth")]
-public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : ControllerBase
+public class MediaMtxAuthController(AppDbContext db, AppSettings settings, PreviewSigner preview) : ControllerBase
 {
     [HttpPost("{secret}")]
     public async Task<IActionResult> Authorize(string secret, [FromBody] MediaMtxAuthIn request)
@@ -34,12 +35,16 @@ public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : Con
     // HLS comes through the edge, which has already checked the viewer's signature. RTSP is how our own
     // services read: its port isn't published, and it needs their secret on top of that. RTMP and SRT are
     // open to the internet and would skip the edge's check, so no credentials ever open those for reading.
+    // WebRTC is how the operator's browser watches, with a short-lived address the API signed for that one path.
     private bool CanRead(MediaMtxAuthIn request) => request.Protocol switch
     {
         "hls" => true,
         "rtsp" => settings.MediaMtxReadSecret.Length > 0
             && request.User == OutputReader.User
             && Secrets.FixedTimeEquals(request.Password ?? "", settings.MediaMtxReadSecret),
+        "webrtc" => request.Path is not null
+            && QueryHelpers.ParseQuery(request.Query).TryGetValue("token", out var token)
+            && preview.IsValid(request.Path, token.ToString()),
         _ => false,
     };
 
