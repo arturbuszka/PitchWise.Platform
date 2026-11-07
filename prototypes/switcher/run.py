@@ -5,7 +5,7 @@ import numpy as np
 from common import *
 
 p = argparse.ArgumentParser()
-p.add_argument("candidate", choices=["ffmpeg", "gst"])
+p.add_argument("candidate", choices=["ffmpeg", "gst", "product"])
 p.add_argument("scenario")
 p.add_argument("out")
 p.add_argument("--seconds", type=int, default=0, help="shorten or lengthen a timed scenario")
@@ -53,8 +53,27 @@ def cam_signal(i, sig, name):
 switcher = None
 
 
+def product_send(**state):
+    switcher.stdin.write((json.dumps(state) + "\n").encode())
+    switcher.stdin.flush()
+
+
+def product_start():
+    """The switcher the broadcast service runs, in place of the prototype, talking the way the service does."""
+    global switcher
+    log = open(f"{a.out}/switcher.log", "a")
+    switcher = subprocess.Popen(
+        [sys.executable, "/product/switcher.py"], stdin=subprocess.PIPE, stderr=log, stdout=log, start_new_session=True)
+    product_send(width=W, height=H, video_kbps=int(BITRATE.rstrip("M")) * 1000, rtmp_host="pw-switcher-mtx", rtmp_port=11935,
+                 rtmp_application="prog", rtmp_stream="main", rtsp_user="", rtsp_password="")
+    product_send(inputs=[{"id": str(i), "url": f"{RTSP}/cam/{i}"} for i in range(3)], video="0", audio="0")
+    event("switcher_start")
+
+
 def switcher_start():
     global switcher
+    if a.candidate == "product":
+        return product_start()
     script = {"ffmpeg": "ffmpeg_switcher.py", "gst": "gst_switcher.py"}[a.candidate]
     urls = ",".join(f"{RTSP}/cam/{i}" for i in range(3))
     log = open(f"{a.out}/switcher.log", "a")
@@ -67,12 +86,16 @@ def switcher_start():
 
 def cut(i):
     event("cut", source=i)
+    if a.candidate == "product":
+        return product_send(video=str(i))
     switcher.stdin.write(f"cut {i}\n".encode())
     switcher.stdin.flush()
 
 
 def audio(i):
     event("audio", source=i)
+    if a.candidate == "product":
+        return product_send(audio=str(i))
     switcher.stdin.write(f"audio {i}\n".encode())
     switcher.stdin.flush()
 
@@ -200,6 +223,8 @@ def scenario():
         event("phase", name="burst")
         cycle(rng, 0.2, 60, cur)
         cut(0); wait(10)
+    elif s == "long":                  # a match and a bit: memory, and whether anything drifts
+        cycle(rng, 30, a.seconds or 7200)
     elif s == "drift":
         cycle(rng, 5, a.seconds or 180)
     elif s == "cpu1080":

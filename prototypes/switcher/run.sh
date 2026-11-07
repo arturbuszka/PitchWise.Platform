@@ -11,7 +11,7 @@ docker network create pw-switcher >/dev/null 2>&1
 docker run -d --name pw-switcher-mtx --network pw-switcher -v "$here/mediamtx.yml:/mediamtx.yml:ro,z" bluenviron/mediamtx:1.21.3 >/dev/null
 sleep 1
 docker run --name pw-switcher-run --rm --network pw-switcher --cpus=7 --memory=6g --user "$(id -u):$(id -g)" \
-  -e HOME=/tmp -e FF_MODE="${FF_MODE:-wallclock}" -e PYTHONDONTWRITEBYTECODE=1 -v "$here:/rig:ro,z" -v "$out:/out:z" \
+  -e HOME=/tmp -e FF_MODE="${FF_MODE:-wallclock}" -e PYTHONDONTWRITEBYTECODE=1 -v "$here:/rig:ro,z" -v "$here/../../broadcast-dotnet/switcher:/product:ro,z" -v "$out:/out:z" \
   pw-switcher-rig nice -n 5 python3 /rig/run.py "$candidate" "$scenario" /out "$@" >"$out/run.log" 2>&1
 code=$?
 docker logs pw-switcher-mtx >"$out/mediamtx.log" 2>&1

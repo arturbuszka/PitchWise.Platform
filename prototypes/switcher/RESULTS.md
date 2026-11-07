@@ -1,10 +1,12 @@
 # Switcher prototype: ffmpeg `streamselect` or GStreamer `input-selector`
 
-**Recommendation: GStreamer.** With ffmpeg, losing any one camera stops the program, even a camera that
+**Decision: GStreamer.** With ffmpeg, losing any one camera stops the program, even a camera that
 isn't on air. That rules it out, because a failed input must not stop the broadcast. GStreamer keeps the
-program going in every failure tested. It has one open problem to solve first: uneven frame timestamps.
+program going in every failure tested.
 
-This is a measurement rig, not product code. Nothing here is wired into the platform.
+This is a measurement rig. The tables below compare the two prototypes as they were when the decision was made. What
+the platform runs is [`broadcast-dotnet/switcher/switcher.py`](../../broadcast-dotnet/switcher/switcher.py), measured
+with the same rig under [the switcher as built](#the-switcher-as-built).
 
 ## What was tested
 
@@ -90,23 +92,44 @@ In GStreamer only the fast camera falls behind, about 50 ms a minute at this exa
 it left gaps of up to 287 ms in the program. Sound also moves against the picture of an off-clock camera, by
 51–66 ms a minute at this rate: camera B in GStreamer, camera C with stream timestamps, both with arrival timestamps.
 
-## Open problems with GStreamer
+## What became of the open problems
 
-1. **Uneven timestamps.** All frames arrive, but only 59% of timestamp steps are within 40 ±5 ms. Most others
-   are multiples of an AAC frame (21.3 ms). An earlier version that started directly on a camera, without the
-   slate, had 97%. Neither `identity single-segment=true`, a fixed pipeline latency, starting cameras at the same
-   time as the slate, nor removing per-buffer Python code fixed it. The cause isn't known.
-2. **Picture ahead of the sound by about 60 ms** on the same camera. It holds steady, but was 15–92 ms across
-   versions and runs, so it would need a fixed correction.
-3. **Memory grows** from 192 to 215 MB over 9 minutes, and ffmpeg's doesn't. Not long enough to tell whether it levels off.
-4. **It needs a program around it.** Switching, the slate and rebuilding branches took about 200 lines of Python.
-   ffmpeg's commands are just lines on stdin. Bindings for C# weren't tried.
+1. **Uneven timestamps: solved.** The prototype had only 59% of timestamp steps within 40 ±5 ms, most others being
+   multiples of an AAC frame. `flvmux` is an aggregator that stops waiting for a late stream when its latency runs
+   out. That latency was worked out when only the slate existed, so it wrote sound ahead of pictures, and then pulled
+   each picture's time up to the last sound written. With `flvmux latency=300ms`, 97.4% of steps are in range over the
+   same 11 minutes, and what is left is one step per cut (548 for 547 cuts). It adds no delay. A camera's delay
+   stayed at 193 ms.
+2. **Picture ahead of the sound: accepted.** Between 52 and 77 ms across runs, steady within a run. Sound arriving
+   this much later than the picture is well inside what viewers tolerate, so nothing corrects it.
+3. **Memory:** LONG_RUN_RESULT
+4. **A program around it: accepted.** About 300 lines of Python, run and supervised by the .NET broadcast service.
+
+## The switcher as built
+
+`run.py product` drives `broadcast-dotnet/switcher/switcher.py` over its real protocol, with the same scenarios. It
+has `flvmux latency=300ms`, and `scenecut=0` so that keyframes come every 2 s exactly. With x264's scene detection,
+they came at cuts too, and MediaMTX's HLS segments grew to 4 s. Quality at cuts didn't suffer: 28.3 dB at worst
+against 27.6 dB, on this test picture.
+
+| | Result |
+|---|---|
+| Cut to visible, median / p95 / max | 116 / 160 / 166 ms in the rig. 130 / 185 / 198 ms from the API call, through the whole stack |
+| Delay of cameras A / B / C | 194 / 872 / 195 ms |
+| Timestamp steps | Only cuts differ: 31 of 1541 over 60 s |
+| Repeated / skipped / damaged frames | 0 |
+| Camera not on air dies or hangs | No effect, longest wait 101 ms |
+| Camera on air dies | Slate, longest wait 101 ms |
+| Camera on air hangs | 1056 ms gap, then the slate |
+| Camera giving the sound dies | Picture carries on, longest wait 87 ms |
+| Camera missing at start | Starts, longest wait 91 ms |
+| Killed and restarted by hand | 3.5 s gap |
+| CPU, 720p / 1080p | About 1.0 / 1.77 cores |
 
 ## Not checked
 
 Real cameras, phones, OBS or vMix. A real network: every loss here was a killed or frozen process on one machine.
-Runs over 11 minutes. Sending the program to YouTube or Twitch. Whether the timestamp problem is visible or matters
-to a real player. Keeping ffmpeg alive through a relay per camera that never ends. Authentication on MediaMTX.
+Sending the program to YouTube or Twitch. Keeping ffmpeg alive through a relay per camera that never ends. Authentication on MediaMTX.
 
 ## Running it
 
