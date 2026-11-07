@@ -64,7 +64,7 @@ Positive offset: the picture is later than the sound. Offsets include up to a fe
 | What happens | ffmpeg, stream timestamps | GStreamer |
 |---|---|---|
 | Camera not on air dies | **Program ends in 0.6 s** | No effect, longest wait 97 ms. Usable again once back |
-| Camera on air dies | **Program ends in 0.5 s** | Slate, longest wait 108 ms. Usable again once back |
+| Camera on air dies | **Program ends in 0.4 s** | Slate, longest wait 108 ms. Usable again once back |
 | Camera not on air hangs (connected, sends nothing) | **Program stops at once**, ends after 10 s | No effect, longest wait 94 ms. Usable again once back |
 | Camera on air hangs | **Program stops**, ends after 10 s | 1.1 s gap, then slate until the operator cuts away |
 | Camera giving the sound dies | **Program ends** | Picture continues in silence, sound back on choosing another source |
@@ -72,9 +72,9 @@ Positive offset: the picture is later than the sound. Offsets include up to a fe
 | Switcher killed and restarted | 8.9 s gap | 5.2 s gap |
 
 Without `astreamselect`, ffmpeg behaves no better: the process stays alive and sends nothing, which is
-harder to detect. So the cause isn't the audio filter. None of the ffmpeg options tried changes this, and a
-lost input can't be reconnected inside a running ffmpeg, so every loss would mean a restart. These two are
-the variant-independent findings. The failure scenarios were only run with stream timestamps.
+harder to detect. So the cause isn't the audio filter. ffmpeg also can't reopen an input while running, so
+every loss would mean a restart. The failure scenarios were only run with stream timestamps, not arrival
+timestamps, because that variant had already failed on stutter.
 
 ## Clocks that disagree
 
@@ -87,8 +87,8 @@ Camera B 1000 ppm slow and camera C 1000 ppm fast for 3 minutes, far more than r
 | GStreamer | 189 → 189 ms | 867 → 867 ms | **194 → 337 ms** |
 
 In GStreamer only the fast camera falls behind, about 50 ms a minute at this exaggerated rate. Cutting to and from
-it left gaps of up to 287 ms in the program. Every variant shows sound and picture of different cameras moving apart
-by about 60 ms a minute here, because that follows from the clocks being different and sound coming from one camera.
+it left gaps of up to 287 ms in the program. Sound also moves against the picture of an off-clock camera, by
+51–66 ms a minute at this rate: camera B in GStreamer, camera C with stream timestamps, both with arrival timestamps.
 
 ## Open problems with GStreamer
 
@@ -96,7 +96,7 @@ by about 60 ms a minute here, because that follows from the clocks being differe
    are multiples of an AAC frame (21.3 ms). An earlier version that started directly on a camera, without the
    slate, had 97%. Neither `identity single-segment=true`, a fixed pipeline latency, starting cameras at the same
    time as the slate, nor removing per-buffer Python code fixed it. The cause isn't known.
-2. **Picture ahead of the sound by about 60 ms** on the same camera. It holds steady, but was 15–85 ms across
+2. **Picture ahead of the sound by about 60 ms** on the same camera. It holds steady, but was 15–92 ms across
    versions and runs, so it would need a fixed correction.
 3. **Memory grows** from 192 to 215 MB over 9 minutes, and ffmpeg's doesn't. Not long enough to tell whether it levels off.
 4. **It needs a program around it.** Switching, the slate and rebuilding branches took about 200 lines of Python.
