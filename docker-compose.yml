@@ -40,6 +40,9 @@ services:
       WEB_ORIGIN: "${PUBLIC_WEB_URL:-http://localhost:3000}"
       MEDIAMTX_API_URL: "http://mediamtx:9997"
       MEDIAMTX_AUTH_SECRET: "${MEDIAMTX_AUTH_SECRET:-devsecret}"
+      MEDIAMTX_READ_SECRET: "${MEDIAMTX_READ_SECRET:-devsecret}"
+      # No default on purpose: a key that is in this repo protects nothing. Outputs can't be set up without it.
+      OUTPUT_ENCRYPTION_KEY: "${OUTPUT_ENCRYPTION_KEY:-}"
     volumes:
       - ./storage:/app/storage:z
     healthcheck:
@@ -72,6 +75,33 @@ services:
       # the API applies the migrations the worker depends on
       api:
         condition: service_healthy
+
+  # Sends matches on to YouTube and Twitch. Its own service, so restarting the worker doesn't cut a broadcast,
+  # and the only one that needs to reach destinations.
+  broadcast:
+    build:
+      context: .
+      dockerfile: broadcast-dotnet/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
+      MEDIAMTX_API_URL: "http://mediamtx:9997"
+      MEDIAMTX_RTSP_URL: "rtsp://mediamtx:8554"
+      MEDIAMTX_READ_SECRET: "${MEDIAMTX_READ_SECRET:-devsecret}"
+      OUTPUT_ENCRYPTION_KEY: "${OUTPUT_ENCRYPTION_KEY:-}"
+      # Only for trying this against a local server.
+      OUTPUTS_ALLOW_PRIVATE_TARGETS: "${OUTPUTS_ALLOW_PRIVATE_TARGETS:-false}"
+    depends_on:
+      # the API applies the migrations this depends on
+      api:
+        condition: service_healthy
+
+  # A local stand-in for YouTube or Twitch, only started with --profile test-destination.
+  test-destination:
+    image: docker.io/bluenviron/mediamtx:1.21.3
+    profiles: [test-destination]
+    volumes:
+      - ./mediamtx/test-destination.yml:/mediamtx.yml:ro,z
 
   # Live ingest: takes RTMP and SRT from encoders and packages it as HLS for the edge.
   mediamtx:

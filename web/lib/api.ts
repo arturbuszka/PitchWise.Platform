@@ -284,6 +284,26 @@ export const api = {
       apiFetch(`${API}/api/matches/${id}/end`, { method: "POST" }).then(json<Match>),
     retryRecording: (id: string): Promise<Match> =>
       apiFetch(`${API}/api/matches/${id}/recording/retry`, { method: "POST" }).then(json<Match>),
+    addOutput: (id: string, output: { name: string; url: string; stream_key: string }): Promise<MatchOutput> =>
+      apiFetch(`${API}/api/matches/${id}/outputs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(output),
+      }).then(json<MatchOutput>),
+    replaceOutputKey: (id: string, outputId: string, streamKey: string): Promise<MatchOutput> =>
+      apiFetch(`${API}/api/matches/${id}/outputs/${outputId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stream_key: streamKey }),
+      }).then(json<MatchOutput>),
+    startOutput: (id: string, outputId: string): Promise<MatchOutput> =>
+      apiFetch(`${API}/api/matches/${id}/outputs/${outputId}/start`, { method: "POST" }).then(json<MatchOutput>),
+    stopOutput: (id: string, outputId: string): Promise<MatchOutput> =>
+      apiFetch(`${API}/api/matches/${id}/outputs/${outputId}/stop`, { method: "POST" }).then(json<MatchOutput>),
+    deleteOutput: async (id: string, outputId: string): Promise<void> => {
+      const response = await apiFetch(`${API}/api/matches/${id}/outputs/${outputId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    },
   },
 
   // What the public page and embed read. Needs no key.
@@ -296,8 +316,14 @@ export const api = {
   },
 };
 
+// An error whose message the API wrote for people, when it wrote one.
+export class ApiError extends Error {}
+
 async function json<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = await response.json().then((b) => b?.detail, () => null);
+    throw detail ? new ApiError(detail) : new Error(`HTTP ${response.status}`);
+  }
   return response.json() as Promise<T>;
 }
 
@@ -324,6 +350,30 @@ export interface MatchInput {
   signal: Signal;
 }
 
+export type OutputStatus =
+  | "stopped"
+  | "waiting_for_signal"
+  | "connecting"
+  | "live"
+  | "retrying"
+  | "incompatible"
+  | "failed"
+  | "offline";
+
+// The destination's key is never returned.
+export interface MatchOutput {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  status: OutputStatus;
+  error: string | null;
+  warning: string | null;
+  attempts: number;
+  next_retry_at: string | null;
+  live_since: string | null;
+}
+
 export interface Match {
   id: string;
   name: string;
@@ -340,6 +390,7 @@ export interface Match {
   recording_status: RecordingStatus;
   recording_error: string | null;
   inputs: MatchInput[];
+  outputs: MatchOutput[];
 }
 
 // The stream key is only ever returned when it is issued.

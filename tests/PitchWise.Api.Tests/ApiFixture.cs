@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PitchWise.Api.Services;
 using PitchWise.Data;
+using PitchWise.Data.Outputs;
 using StackExchange.Redis;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
@@ -25,6 +26,8 @@ public sealed class ApiFixture : IAsyncLifetime
     public const string ApiKey = "test-api-key";
     public const string AdminToken = "test-admin-token";
     public const string MediaMtxSecret = "test-mediamtx-secret";
+    public const string ReadSecret = "test-read-secret";
+    public static readonly string EncryptionKey = Convert.ToBase64String(new byte[32]);
 
     private readonly PostgreSqlContainer _postgres =
         new PostgreSqlBuilder("docker.io/library/postgres:16").Build();
@@ -54,6 +57,8 @@ public sealed class ApiFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("ADMIN_TOKEN", AdminToken);
         Environment.SetEnvironmentVariable("MEDIAMTX_AUTH_SECRET", MediaMtxSecret);
         Environment.SetEnvironmentVariable("WEB_ORIGIN", WebOrigin);
+        Environment.SetEnvironmentVariable("MEDIAMTX_READ_SECRET", ReadSecret);
+        Environment.SetEnvironmentVariable("OUTPUT_ENCRYPTION_KEY", EncryptionKey);
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.ConfigureTestServices(services =>
         {
@@ -69,6 +74,22 @@ public sealed class ApiFixture : IAsyncLifetime
         var client = _factory.CreateClient();
         if (apiKey is not null) client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
         return client;
+    }
+
+    /// <summary>
+    /// The API as it runs when OUTPUT_ENCRYPTION_KEY isn't set. It is a second host, with its own signal monitor
+    /// writing to the same database, so it must not outlive the test or it races the tests after it.
+    /// </summary>
+    public async Task WithoutEncryptionKey(Func<HttpClient, Task> test)
+    {
+        await using var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<OutputKeyCipher>();
+            services.AddSingleton(new OutputKeyCipher(null));
+        }));
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", ApiKey);
+        await test(client);
     }
 
     /// <summary>Onboards another tenant through the admin API and returns a client for it.</summary>

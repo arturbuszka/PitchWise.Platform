@@ -6,6 +6,7 @@ import { InputAccess, Match, MatchInput, Playback, RecordingStatus, Signal, api 
 import { ConsoleHeader } from "./ConsoleHeader";
 import { HlsPlayer } from "./HlsPlayer";
 import { MatchStatusBadge } from "./MatchStatusBadge";
+import { OutputsSection } from "./OutputsSection";
 import { takeIssuedAccess } from "./issuedAccess";
 
 const POLL_MS = 2000;
@@ -176,6 +177,8 @@ export function MatchPanel({ id }: { id: string }) {
           </div>
         </section>
 
+        <OutputsSection match={match} ended={ended} />
+
         {ended && <RecordingCard match={match} onRetry={handleRetryRecording} />}
 
         <section className="bg-white border border-[#eaecf0] rounded-xl p-4 flex flex-col gap-3">
@@ -199,7 +202,8 @@ const RECORDING_MESSAGE: Record<RecordingStatus, string> = {
   none: "Nothing was recorded, because no signal arrived.",
   processing: "Joining the recording. This takes a few minutes at most, and needs no action.",
   ready: "The recording is ready, on the public page and in this match's analysis.",
-  failed: "The recording could not be finished. Nothing is lost: its raw files are kept, so you can try again.",
+  failed:
+    "The recording could not be finished. Its raw files are kept. Trying again helps after a temporary problem such as a full disk, but not if the encoder settings changed during the match.",
 };
 
 function RecordingCard({ match, onRetry }: { match: Match; onRetry: () => void }) {

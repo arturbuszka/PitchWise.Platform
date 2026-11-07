@@ -123,6 +123,23 @@ public record SignalOut(
     double? RttMs,
     IReadOnlyList<string> Tracks);
 
+// The destination's key is never returned, so the only way to see it is where it was issued.
+public record OutputOut(
+    Guid Id,
+    string Name,
+    string Url,
+    bool Enabled,
+    OutputStatus Status,
+    string? Error,
+    string? Warning,
+    int Attempts,
+    DateTime? NextRetryAt,
+    DateTime? LiveSince);
+
+public record CreateOutputIn(string? Name, string? Url, string? StreamKey);
+
+public record UpdateOutputIn(string? Name, string? Url, string? StreamKey);
+
 public record MatchInputOut(Guid Id, string Name, bool IsProgram, SignalOut Signal);
 
 public record MatchOut(
@@ -140,7 +157,8 @@ public record MatchOut(
     DateTime? EndedAt,
     RecordingStatus RecordingStatus,
     string? RecordingError,
-    List<MatchInputOut> Inputs);
+    List<MatchInputOut> Inputs,
+    List<OutputOut> Outputs);
 
 // Where an encoder publishes. Only returned when a key is issued: it is stored hashed, so it cannot
 // be shown again. OBS asks for the RTMP server and stream name separately.
@@ -180,4 +198,4 @@ public record CreatedTenantOut(int Id, string Name, string ApiKey);
 
 // --- MediaMTX auth callback ---
 
-public record MediaMtxAuthIn(string? Action, string? Path, string? Query, string? Protocol);
+public record MediaMtxAuthIn(string? Action, string? Path, string? Query, string? Protocol, string? User = null, string? Password = null);

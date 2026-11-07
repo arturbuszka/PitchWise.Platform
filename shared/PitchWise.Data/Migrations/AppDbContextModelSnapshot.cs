@@ -347,6 +347,82 @@ namespace PitchWise.Data.Migrations
                     b.ToTable("match_input", (string)null);
                 });
 
+            modelBuilder.Entity("PitchWise.Data.Models.MatchOutput", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<int>("Generation")
+                        .HasColumnType("integer")
+                        .HasColumnName("generation");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTime?>("LiveSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("live_since");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_retry_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StreamKeyEncrypted")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("stream_key_encrypted");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("url");
+
+                    b.Property<string>("Warning")
+                        .HasColumnType("text")
+                        .HasColumnName("warning");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Enabled");
+
+                    b.HasIndex("MatchId");
+
+                    b.ToTable("match_output", (string)null);
+                });
+
             modelBuilder.Entity("PitchWise.Data.Models.Tenant", b =>
                 {
                     b.Property<int>("Id")
@@ -461,6 +537,15 @@ namespace PitchWise.Data.Migrations
                 });
 
             modelBuilder.Entity("PitchWise.Data.Models.MatchInput", b =>
+                {
+                    b.HasOne("PitchWise.Data.Models.Match", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PitchWise.Data.Models.MatchOutput", b =>
                 {
                     b.HasOne("PitchWise.Data.Models.Match", null)
                         .WithMany()

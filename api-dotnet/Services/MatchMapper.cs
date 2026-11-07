@@ -7,7 +7,10 @@ namespace PitchWise.Api.Services;
 /// <summary>Builds what the API says about a match, including the addresses that depend on the deployment.</summary>
 public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner hls)
 {
-    public MatchOut ToOut(Match match, IEnumerable<MatchInput> inputs)
+    // The service reports every second or two, so this is several missed reports.
+    private static readonly TimeSpan OutputServiceQuiet = TimeSpan.FromSeconds(15);
+
+    public MatchOut ToOut(Match match, IEnumerable<MatchInput> inputs, IEnumerable<MatchOutput> outputs)
     {
         var web = settings.WebOrigin.TrimEnd('/');
         var embedUrl = $"{web}/embed/{match.PublicId}";
@@ -26,7 +29,24 @@ public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner 
             match.EndedAt,
             match.RecordingStatus,
             match.RecordingError,
-            inputs.OrderBy(i => i.CreatedAt).Select(i => ToOut(match, i)).ToList());
+            inputs.OrderBy(i => i.CreatedAt).Select(i => ToOut(match, i)).ToList(),
+            outputs.OrderBy(o => o.CreatedAt).Select(ToOut).ToList());
+    }
+
+    public OutputOut ToOut(MatchOutput output)
+    {
+        var quiet = output.Enabled && output.LastSeenAt < DateTime.UtcNow - OutputServiceQuiet;
+        return new OutputOut(
+            output.Id,
+            output.Name,
+            output.Url,
+            output.Enabled,
+            quiet ? OutputStatus.Offline : output.Status,
+            quiet ? "The broadcast service isn't responding, so this output's state is unknown." : output.Error,
+            output.Warning,
+            output.Attempts,
+            output.NextRetryAt,
+            output.LiveSince);
     }
 
     public MatchInputOut ToOut(Match match, MatchInput input) =>

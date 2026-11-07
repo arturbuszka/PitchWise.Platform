@@ -6,6 +6,7 @@ using PitchWise.Api.Dtos;
 using PitchWise.Data;
 using PitchWise.Data.Config;
 using PitchWise.Data.Models;
+using PitchWise.Data.Outputs;
 
 namespace PitchWise.Api.Controllers;
 
@@ -24,16 +25,29 @@ public class MediaMtxAuthController(AppDbContext db, AppSettings settings) : Con
 
         return request.Action switch
         {
-            // HLS comes through the edge, which has already checked the viewer's signature. RTMP and
-            // SRT are open to the internet, and reading over them would skip that check.
-            "read" => request.Protocol == "hls" ? Ok() : Unauthorized(),
+            "read" => CanRead(request) ? Ok() : Unauthorized(),
             "publish" => await CanPublish(request) ? Ok() : Unauthorized(),
             _ => Unauthorized(),
         };
     }
 
+    // HLS comes through the edge, which has already checked the viewer's signature. RTSP is how our own
+    // services read: its port isn't published, and it needs their secret on top of that. RTMP and SRT are
+    // open to the internet and would skip the edge's check, so no credentials ever open those for reading.
+    private bool CanRead(MediaMtxAuthIn request) => request.Protocol switch
+    {
+        "hls" => true,
+        "rtsp" => settings.MediaMtxReadSecret.Length > 0
+            && request.User == OutputReader.User
+            && Secrets.FixedTimeEquals(request.Password ?? "", settings.MediaMtxReadSecret),
+        _ => false,
+    };
+
     private async Task<bool> CanPublish(MediaMtxAuthIn request)
     {
+        // The only ways in for encoders. The others are for reading, or aren't open at all.
+        if (request.Protocol is not ("rtmp" or "srt")) return false;
+
         const string prefix = "live/";
         if (request.Path is null || !request.Path.StartsWith(prefix)
             || !Guid.TryParse(request.Path[prefix.Length..], out var inputId))

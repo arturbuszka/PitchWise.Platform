@@ -50,6 +50,10 @@ public class AppSettings
     // Part of the auth callback URL, so only MediaMTX can reach that endpoint.
     public string MediaMtxAuthSecret { get; set; } = "devsecret";
     public int MediaMtxPollSeconds { get; set; } = 2;
+    // What the broadcast service reads the signal with, over RTSP. Empty lets nobody read that way.
+    public string MediaMtxReadSecret { get; set; } = "";
+    // Base64 of 32 bytes. Empty means outputs can't be set up; everything else works without it.
+    public string OutputEncryptionKey { get; set; } = "";
 
     public string UploadsDir => Path.Combine(StorageDir, "uploads");
     public string ClipsDir => Path.Combine(StorageDir, "clips");

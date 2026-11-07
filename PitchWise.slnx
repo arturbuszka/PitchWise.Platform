@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="api-dotnet/PitchWise.Api.csproj" />
+    <Project Path="broadcast-dotnet/PitchWise.Broadcast/PitchWise.Broadcast.csproj" />
     <Project Path="shared/PitchWise.Data/PitchWise.Data.csproj" />
     <Project Path="worker-dotnet/PitchWise.Worker/PitchWise.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PitchWise.Api.Tests/PitchWise.Api.Tests.csproj" />
+    <Project Path="tests/PitchWise.Broadcast.Tests/PitchWise.Broadcast.Tests.csproj" />
     <Project Path="tests/PitchWise.Worker.Tests/PitchWise.Worker.Tests.csproj" />
   </Folder>
 </Solution>

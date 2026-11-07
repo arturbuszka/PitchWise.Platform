@@ -117,6 +117,60 @@ public class Match
     public string? RecordingError { get; set; }
 }
 
+// A copy of the program sent to a destination such as YouTube or Twitch. The API writes what is wanted, and
+// the broadcast service writes what is happening. Each change the API makes raises Generation, which tells
+// the service to start over, and stops a report about the old settings from overwriting the new state.
+public class MatchOutput
+{
+    public Guid Id { get; set; }
+    public Guid MatchId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    // Encrypted with OutputKeyCipher, as it has to be sent on and so can't be hashed. Never returned.
+    public string StreamKeyEncrypted { get; set; } = string.Empty;
+    public bool Enabled { get; set; }
+    public int Generation { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public OutputStatus Status { get; set; } = OutputStatus.Stopped;
+    public string? Error { get; set; }
+    public string? Warning { get; set; }
+    // Failures since the output last ran steadily. Losing the input signal doesn't count.
+    public int Attempts { get; set; }
+    public DateTime? NextRetryAt { get; set; }
+    public DateTime? LiveSince { get; set; }
+    // When the broadcast service last looked after it, so a dead service doesn't pass for a live output.
+    public DateTime? LastSeenAt { get; set; }
+
+    /// <summary>Asks for it to run, forgetting any failures.</summary>
+    public void Start(DateTime now)
+    {
+        Reset(OutputStatus.Connecting);
+        Enabled = true;
+        LastSeenAt = now;
+    }
+
+    public void Stop()
+    {
+        Reset(OutputStatus.Stopped);
+        Enabled = false;
+    }
+
+    private void Reset(OutputStatus status)
+    {
+        Generation++;
+        Status = status;
+        Error = null;
+        Warning = null;
+        Attempts = 0;
+        NextRetryAt = null;
+        LiveSince = null;
+    }
+
+    // The one place that says what an output sends. The switcher's program replaces the input on air here.
+    public static string SourcePathFor(Match match) => MatchInput.PathFor(match.ProgramInputId.GetValueOrDefault());
+}
+
 // One signal coming into a match, usually a camera. An encoder publishes to it over RTMP or SRT.
 public class MatchInput
 {

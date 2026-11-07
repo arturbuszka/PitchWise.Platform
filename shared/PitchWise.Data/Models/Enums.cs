@@ -61,3 +61,16 @@ public enum SignalState
     Receiving,
     Stalled,    // the encoder is connected, but no data has arrived for a few seconds
 }
+
+// What an output is doing. Offline is never stored: the API reports it when the service has gone quiet.
+public enum OutputStatus
+{
+    Stopped,
+    WaitingForSignal,   // waiting_for_signal: wanted, but nothing is arriving on the input on air
+    Connecting,
+    Live,
+    Retrying,           // failed, and will try again at NextRetryAt
+    Incompatible,       // the signal can't be sent as it is; it starts by itself when the signal changes
+    Failed,             // gave up, or can't start without a change; needs someone to act
+    Offline,
+}

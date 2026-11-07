@@ -54,7 +54,7 @@ public class MatchesController(
         await transaction.CommitAsync(ct);
 
         return CreatedAtAction(nameof(Get), new { id = match.Id },
-            new CreatedMatchOut(mapper.ToOut(match, [input]), mapper.Access(input.Id, streamKey)));
+            new CreatedMatchOut(mapper.ToOut(match, [input], []), mapper.Access(input.Id, streamKey)));
     }
 
     [HttpGet]
@@ -69,7 +69,9 @@ public class MatchesController(
         var ids = matches.Select(m => m.Id).ToList();
         var inputs = (await db.MatchInputs.AsNoTracking().Where(i => ids.Contains(i.MatchId)).ToListAsync(ct))
             .ToLookup(i => i.MatchId);
-        return matches.Select(m => mapper.ToOut(m, inputs[m.Id])).ToList();
+        var outputs = (await db.MatchOutputs.AsNoTracking().Where(o => ids.Contains(o.MatchId)).ToListAsync(ct))
+            .ToLookup(o => o.MatchId);
+        return matches.Select(m => mapper.ToOut(m, inputs[m.Id], outputs[m.Id])).ToList();
     }
 
     [HttpGet("{id:guid}")]
@@ -161,6 +163,8 @@ public class MatchesController(
             match.Status = MatchStatus.Ended;
             match.EndedAt = DateTime.UtcNow;
             match.RecordingStatus = RecordingStatus.Processing;
+            // In the same write, so an ended match can't be left with outputs still wanted.
+            foreach (var output in await db.MatchOutputs.Where(o => o.MatchId == id).ToListAsync(ct)) output.Stop();
             await db.SaveChangesAsync(ct);
 
             var inputIds = await db.MatchInputs.Where(i => i.MatchId == id).Select(i => i.Id).ToListAsync(ct);
@@ -222,5 +226,7 @@ public class MatchesController(
     }
 
     private async Task<MatchOut> Out(Match match, CancellationToken ct) =>
-        mapper.ToOut(match, await db.MatchInputs.AsNoTracking().Where(i => i.MatchId == match.Id).ToListAsync(ct));
+        mapper.ToOut(match,
+            await db.MatchInputs.AsNoTracking().Where(i => i.MatchId == match.Id).ToListAsync(ct),
+            await db.MatchOutputs.AsNoTracking().Where(o => o.MatchId == match.Id).ToListAsync(ct));
 }
