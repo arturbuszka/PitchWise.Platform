@@ -4,8 +4,8 @@
 
 A club in a lower league has cameras, but no way to broadcast from them. PitchWise is the service
 behind that broadcast: the club creates a match, points its encoder at the address it gets, and shares
-a public page, or embeds the player on its own site. The same signal can go on to YouTube and Twitch. When
-the match ends, the same page plays the recording.
+a public page, or embeds the player on its own site. With several cameras, an operator cuts between them in the
+console. The program can go on to YouTube and Twitch. When the match ends, the same page plays the recording.
 
 ![Match console](docs/screenshot.png)
 
@@ -15,6 +15,9 @@ Built with ASP.NET Core 10, EF Core, PostgreSQL, Redis, MediaMTX, nginx and Next
 
 - **Matches:** a match has one or more inputs, usually one per camera. Each gets its own address and
   key for the encoder, over SRT or RTMP. One input is on air.
+- **Switcher:** an operator watches every camera with little delay and cuts with buttons or number keys, with
+  the sound chosen by itself. Viewers, the recording and every destination get one program, and losing a
+  camera doesn't stop it. A club with its own OBS or vMix can send a ready program instead.
 - **Signal status:** for each input, whether data is arriving, the bitrate and, over SRT, packet loss
   and round trip time.
 - **Public page and embed:** viewers need no account. A dropped encoder shows a message and picks up
@@ -31,7 +34,7 @@ Built with ASP.NET Core 10, EF Core, PostgreSQL, Redis, MediaMTX, nginx and Next
 - **Multi-tenant:** each customer has an API key and can only reach their own data.
 - **Share links:** public, time-limited links to a highlight.
 
-Not built yet: cutting between cameras without a reload, and live statistics. See the
+Not built yet: transitions, frames and the score over the picture, and live statistics. See the
 [roadmap](#roadmap).
 
 ## Architecture
@@ -49,7 +52,8 @@ Not built yet: cutting between cameras without a reload, and live statistics. Se
                                            │  finished videos │  ▲  signature check + cache
                                            └──────────────────┼──┘
                                                               │ RTSP, internal, with a secret
-                 PostgreSQL ◄── what is wanted ── Broadcast (one ffmpeg per destination) ──► YouTube, Twitch
+                 PostgreSQL ◄── what is wanted ── Broadcast ─ one ffmpeg per destination ──► YouTube, Twitch
+                                                      └─ one switcher per match: cameras in, program back to MediaMTX
 ```
 
 Decisions worth explaining:
@@ -67,6 +71,9 @@ Decisions worth explaining:
 - **Destinations have their own service.** Restarting the worker to deploy a change to highlights doesn't cut
   a broadcast. It keeps one ffmpeg process per destination, and works from what the database says is wanted, so
   a restart picks up where it stopped. See [sending to YouTube and Twitch](#sending-to-youtube-and-twitch).
+- **The program is an input.** A switcher publishes to a hidden input of the match, like any encoder, with a key
+  that is new each time it starts. The public page, recording and outputs already follow "the input on air", so
+  none of them had to change or learn about the switcher. See [cutting between cameras](#cutting-between-cameras).
 - **Match status is polled from MediaMTX.** A missed callback or a crash on either side can't leave
   a match showing "live" forever. A dropped encoder puts the match back to `waiting` and can
   reconnect; only the customer can end a match for good.
@@ -104,6 +111,7 @@ docker compose up -d --build
 | HLS edge | http://localhost:8080 |
 | RTMP ingest | rtmp://localhost:1935 |
 | SRT ingest | srt://localhost:8890 (UDP) |
+| Operator's previews | http://localhost:8889, and 8189 (UDP) |
 
 If port 8080 is taken, set another one for the edge: `EDGE_PORT=8081 docker compose up -d --build`.
 
@@ -145,6 +153,65 @@ Set `ADMIN_TOKEN` (see [.env.example](.env.example)) and then:
 curl -s -X POST localhost:8000/api/admin/tenants \
   -H "X-Admin-Token: $ADMIN_TOKEN" -H 'Content-Type: application/json' -d '{"name":"Acme FC"}'
 ```
+
+## Cutting between cameras
+
+Without a switcher, viewers get one input, which suits a ready program from OBS or vMix. To cut between cameras,
+create a match as [above](#broadcast-a-match), add a camera, and publish to both:
+
+```bash
+curl -s -X POST localhost:8000/api/matches/<match_id>/inputs \
+  -H 'X-Api-Key: demo-key' -H 'Content-Type: application/json' -d '{"name":"Wide"}'
+```
+
+Keep B-frames off in the encoders, as with `-tune zerolatency` here. The switcher takes them, but WebRTC previews can't
+show them, and the panel says so:
+
+```bash
+ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=25 -f lavfi -i sine=frequency=440 \
+  -c:v libx264 -preset veryfast -tune zerolatency -g 50 -pix_fmt yuv420p -c:a aac -f flv '<rtmp_url>'
+```
+
+Then press **Use the switcher** on the match's page and **Open the switcher**, or:
+
+```bash
+curl -s -X POST localhost:8000/api/matches/<match_id>/switcher -H 'X-Api-Key: demo-key'
+curl -s -X POST localhost:8000/api/matches/<match_id>/switcher/cut \
+  -H 'X-Api-Key: demo-key' -H 'Content-Type: application/json' -d '{"input_id":"<input_id>"}'
+```
+
+![The switcher](docs/switcher.png)
+
+Keys `1` to `9` cut to a camera, and `Shift` with a number takes the sound from it. The history keeps each cut with
+its position on the match timeline, and marks what the switcher did by itself.
+
+**How it works.** The broadcast service keeps one Python process per match around a GStreamer pipeline, restarted for as
+long as the match lasts. It starts when the first camera arrives, so that time zero isn't a black screen. A cut goes
+through the API into the database, and a Postgres notification gets it to the process at once. The service also
+checks the database every second, so a lost notification costs a second, not the cut.
+[`prototypes/switcher`](prototypes/switcher/RESULTS.md) has the comparison with ffmpeg, which stops the whole program
+when any one camera is lost, and how it was measured.
+
+**Only cuts for now.** The picture is re-encoded to 1280x720 at 25 fps and 4 Mbit/s (`PROGRAM_WIDTH`, `PROGRAM_HEIGHT`,
+`PROGRAM_VIDEO_KBPS`), with a keyframe every 2 seconds, which is what YouTube asks for.
+
+**What was measured,** with generated signals on one machine, and no real cameras or network:
+
+| What | Result |
+|---|---|
+| Cut, from the API call to a viewer reading the program over RTSP | Median about 130 ms, at most 198 ms over 120 cuts. No frame of the wrong camera in the rig's runs. |
+| Delay the switcher adds | About 190 ms, on top of the camera's own encoder. |
+| Timestamps | 97% of steps are 40 ±5 ms. The other 3% are the single steps at cuts. |
+| Sound against picture, same camera | Sound 50 to 80 ms later. Steady through a run, and it varies between runs. Cuts don't add to it. |
+| Camera not on air dies or hangs | No effect on the program. |
+| Camera on air dies | Slate at once: black picture, and silence if it gave the sound. |
+| Camera on air hangs | A 1.1 second wait, then the slate. No error tells us it hung. |
+| Camera gives the sound and dies | Picture carries on in silence. The panel says so. |
+| Camera comes back | Usable again, and back on air by itself if it is still the chosen one. |
+| Camera missing when the switcher starts | Starts anyway. Usable once it appears. |
+| Switcher process is killed | The program is back on MediaMTX about 4 seconds later, with the chosen camera. Destinations reconnect by themselves. It shows as a gap in the recording, and the timeline holds. |
+| A process hangs | Restarted after 10 seconds without a frame. |
+| CPU per match | About 1 core at 720p, 1.8 at 1080p. |
 
 ## Sending to YouTube and Twitch
 
@@ -191,7 +258,7 @@ for every channel. A signal with no audio is sent, with a warning.
 | What happens | Result |
 |---|---|
 | Encoder disconnects, or freezes | `waiting_for_signal`, which isn't counted as a failure. Sending starts again by itself about 4 seconds after the signal returns. |
-| Another input goes on air | The destination has the new input about 4 seconds later. A break, until there is a switcher. |
+| Another input goes on air, without a switcher | The destination has the new input about 4 seconds later, after a break. With one, a cut changes nothing for the destination. |
 | Destination refuses or drops the connection | `retrying`, after 2, 4, 8, 16, 32 and then 60 seconds, five times over. Then `failed` until someone acts, between 6 and 7 minutes on, as each attempt takes a few seconds too. A minute of steady sending clears the count. |
 | Destination hangs without closing | ffmpeg would wait forever, so it is killed when no data has moved for 15 seconds. Detected about 24 seconds in, as network buffers take data for a while. |
 | ffmpeg is killed | As for a refused connection: back in about 5 seconds, with nothing else affected. |
@@ -247,7 +314,13 @@ Send `X-Api-Key` on everything except health checks, public match data, share li
 | `GET /api/matches`, `GET /api/matches/{id}` | List matches and read their status, inputs and signal |
 | `POST /api/matches/{id}/inputs` | Add an input; returns its addresses and key once |
 | `POST /api/matches/{id}/inputs/{inputId}/rotate-key` | Replace a lost or leaked key, disconnecting the encoder |
-| `PUT /api/matches/{id}/program` | Choose which input is on air |
+| `PUT /api/matches/{id}/program` | Choose which input is on air, without a switcher (`409` with one) |
+| `POST /api/matches/{id}/switcher` | Make the switcher's program what is on air, starting with the current input |
+| `DELETE /api/matches/{id}/switcher` | Go back to one input on air, the one last cut to |
+| `POST /api/matches/{id}/switcher/cut` | Cut to an input |
+| `POST /api/matches/{id}/switcher/audio` | Take the sound from an input |
+| `GET /api/matches/{id}/switcher/cuts` | History of cuts, kept after the match |
+| `GET /api/matches/{id}/switcher/preview` | Short-lived WebRTC addresses for each input and the program |
 | `GET /api/matches/{id}/playback` | Signed HLS URL of what is on air (`409` unless live) |
 | `POST /api/matches/{id}/end` | Disconnect the encoders, close the match and start joining its recordings |
 | `POST /api/matches/{id}/recording/retry` | Try again after a recording failed |
@@ -306,6 +379,10 @@ MediaMTX on `127.0.0.1:8554`. The API and this service get the same development-
 dotnet run --project broadcast-dotnet/PitchWise.Broadcast
 ```
 
+The switcher it runs needs Python and the GStreamer packages listed in its [Dockerfile](broadcast-dotnet/Dockerfile),
+with `SWITCHER_SCRIPT` set to the full path of `broadcast-dotnet/switcher/switcher.py`. That hasn't been tried outside
+its container.
+
 The [broadcast steps](#broadcast-a-match) above work the same way against this setup. Files go to
 `.dev-storage/`, not `storage/`, because the full stack creates `storage/` as root.
 
@@ -334,8 +411,9 @@ dotnet test PitchWise.slnx
 
 Integration tests run the real API and migrations against Postgres and Redis containers from
 Testcontainers, so they need Docker, but not the infrastructure above. MediaMTX is faked in these
-tests. The worker and broadcast tests run real ffmpeg, so they need it too. CI also builds every image. On a
-small machine, run one project at a time, as each starts its own containers.
+tests. The worker and broadcast tests run real ffmpeg, so they need it too. The switcher's process is faked in the
+tests as well, and its image build checks that every GStreamer element it uses is there. What it does with video is
+measured by the rig in `prototypes/switcher`, which CI doesn't run. CI also builds every image. On a small machine, run one project at a time, as each starts its own containers.
 
 To change the schema:
 
@@ -346,8 +424,8 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 
 ## Roadmap
 
-1. **A switcher:** an operator cuts between cameras in the console, and viewers, the recording and
-   every destination get one program.
+1. **Frames and the score over the program,** and transitions. The picture is already being encoded, so this adds
+   little.
 2. **Analysis after the match:** a worker runs [PitchWise.Lab](https://github.com/arturbuszka/PitchWise.Lab),
    a .NET computer vision pipeline, on a recording and stores the results. Lab is a separate process
    that receives a copy of the video and returns only data, so its failure can't stop a broadcast. It
@@ -370,14 +448,31 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 - **Inputs can't be removed** from a match once added.
 - **Keys travel unencrypted.** Encoders send the stream key in the clear over both RTMP and SRT, as
   there's no RTMPS or SRT passphrase set up. Use a VPN on an untrusted network.
-- **Changing the input on air reloads the player.** Viewers move over within about 30 seconds, with
-  a break in the picture. Each camera also needs its own connection and its own bitrate.
+- **Without the switcher, changing the input on air reloads the player.** Viewers move over within about 30 seconds,
+  with a break in the picture. Each camera needs its own connection and its own bitrate either way.
+- **The switcher has only met generated signals.** Real cameras, phones, OBS, vMix, a real network and bad links
+  are untested. Every lost camera in testing was a killed or frozen process on the same machine.
+- **Cameras must send H264 and AAC to the switcher.** Anything else is reported by the camera's name and not used.
+- **Previews are the cameras' full streams.** An operator's browser downloads and decodes all of them, which a venue's
+  connection may not carry. Reduced copies for previews would fix it, at the cost of encoding them.
+- **Previews need a camera without B-frames, and an address browsers can reach.** Set `PUBLIC_WEBRTC_URL` and
+  `PUBLIC_WEBRTC_HOST` away from localhost, and allow UDP 8189. There is no TURN server, so a network that blocks
+  that port gets no previews. A console on HTTPS needs HTTPS for previews too. Tested in Chromium only: Playwright's
+  Firefox has no H264 for WebRTC.
+- **Restarting the broadcast service cuts every program,** which it runs as child processes, for as long as the
+  restart takes. A second instance only stands by.
+- **A switcher started after a crash waits for a camera.** With every camera gone, a running program stays on the
+  slate, but a restarted one doesn't start until the first camera returns.
+- **A match costs a core.** There is no limit on how many switchers run on one machine, and nothing warns when it
+  falls behind.
+- **Switching on the switcher during a match leaves the earlier part out of the program's recording,** as a gap.
+  Each camera's own recording still has it.
 - **Packet loss is only known over SRT.** RTMP runs over TCP, which hides it.
 - **The web console acts as one tenant.** It adds the demo key on the server, so it needs a login
   before being exposed.
 - **MD5 signatures.** nginx `secure_link` requires MD5. A commercial CDN's token auth would replace it.
-- **The public recording is one input.** Viewers get whichever input was on air when the match ended,
-  whatever was on air before that, until the switcher makes one program.
+- **Without the switcher, the public recording is one input.** Viewers get whichever input was on air when the
+  match ended, whatever was on air before that.
 - **Changing encoder settings during a match stops its recording from joining.** Files joined without
   re-encoding must match, so a new resolution after a reconnect ends in a failed recording, with its raw
   segments kept. Trying again gives the same result, as there is no re-encoding path yet. Reconnecting
@@ -387,8 +482,8 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 - **A full disk isn't reported.** Only the MediaMTX log shows that recording has stopped.
 - **Destinations have only been tested against a local server.** How YouTube and Twitch treat a reconnect, a
   signal with no audio or a stream that isn't H264 is untested, and so is RTMPS.
-- **Changing the input on air breaks the stream to destinations for about 4 seconds,** as the copy has to
-  restart. The switcher removes that.
+- **Without the switcher, changing the input on air breaks the stream to destinations for about 4 seconds,** as the
+  copy has to restart.
 - **Destination keys are visible to `ps` inside the broadcast container,** on ffmpeg's command line, along with
   the secret it reads signals with. Only that container sees them, and it runs no one else's code.
 - **The check on private addresses happens before ffmpeg connects.** A name that resolves differently for
