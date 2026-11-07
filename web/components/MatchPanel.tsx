@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { InputAccess, Match, MatchInput, Playback, RecordingStatus, Signal, api } from "@/lib/api";
+import { InputAccess, Match, MatchInput, Playback, RecordingStatus, Signal, SwitcherStatus, api } from "@/lib/api";
 import { ConsoleHeader } from "./ConsoleHeader";
 import { HlsPlayer } from "./HlsPlayer";
 import { MatchStatusBadge } from "./MatchStatusBadge";
@@ -91,6 +91,13 @@ export function MatchPanel({ id }: { id: string }) {
     return act(async () => setMatch(await api.matches.end(id)));
   };
 
+  const handleEnableSwitcher = () => act(async () => setMatch(await api.matches.enableSwitcher(id)));
+
+  const handleDisableSwitcher = () => {
+    if (!confirm("Stop using the switcher? Viewers go back to one input, and their players reload.")) return;
+    return act(async () => setMatch(await api.matches.disableSwitcher(id)));
+  };
+
   const handleRetryRecording = () => act(async () => setMatch(await api.matches.retryRecording(id)));
 
   if (missing) {
@@ -128,6 +135,7 @@ export function MatchPanel({ id }: { id: string }) {
               input={input}
               access={access[input.id]}
               ended={ended}
+              canPutOnAir={!match.switcher}
               onPutOnAir={() =>
                 act(async () => {
                   setMatch(await api.matches.setProgram(id, input.id));
@@ -158,6 +166,37 @@ export function MatchPanel({ id }: { id: string }) {
           )}
         </section>
 
+        {!ended && (
+          <section className="bg-white border border-[#eaecf0] rounded-xl p-4 flex flex-col gap-2">
+            <h2 className="text-[15px] font-bold">Switcher</h2>
+            {match.switcher ? (
+              <>
+                <p className="text-[13px] text-[#6b7280]">
+                  The program comes from the switcher: {SWITCHER_LABEL[match.switcher.status]}.
+                </p>
+                <div className="flex items-center gap-4">
+                  <Link href={`/matches/${id}/switcher`} className="text-[13px] font-semibold text-[#2f5fe0] hover:underline">
+                    Open the switcher
+                  </Link>
+                  <button onClick={handleDisableSwitcher} className="text-[13px] font-semibold text-[#6b7280] hover:underline">
+                    Stop using it
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] text-[#6b7280]">
+                  Cut between this match&apos;s cameras here. Without it, viewers get one input, which suits a ready
+                  program from OBS or vMix.
+                </p>
+                <button onClick={handleEnableSwitcher} className="self-start text-[13px] font-semibold text-[#2f5fe0] hover:underline">
+                  Use the switcher
+                </button>
+              </>
+            )}
+          </section>
+        )}
+
         <section className="flex flex-col gap-3">
           <h2 className="text-[15px] font-bold">On air</h2>
           <div className="bg-black rounded-xl overflow-hidden aspect-video">
@@ -171,7 +210,7 @@ export function MatchPanel({ id }: { id: string }) {
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-[14px] text-[#9aa0a8]">
-                {ended ? "This match has ended." : "Waiting for the signal on the input on air…"}
+                {ended ? "This match has ended." : match.switcher ? "Waiting for the switcher's program…" : "Waiting for the signal on the input on air…"}
               </div>
             )}
           </div>
@@ -197,6 +236,15 @@ export function MatchPanel({ id }: { id: string }) {
     </div>
   );
 }
+
+const SWITCHER_LABEL: Record<SwitcherStatus, string> = {
+  stopped: "stopped",
+  waiting_for_cameras: "waiting for the first camera",
+  starting: "starting",
+  running: "running",
+  restarting: "restarting",
+  offline: "state unknown, the broadcast service isn't responding",
+};
 
 const RECORDING_MESSAGE: Record<RecordingStatus, string> = {
   none: "Nothing was recorded, because no signal arrived.",
@@ -226,6 +274,7 @@ function InputCard({
   input,
   access,
   ended,
+  canPutOnAir,
   onPutOnAir,
   onRotate,
   onDismissAccess,
@@ -233,6 +282,7 @@ function InputCard({
   input: MatchInput;
   access?: InputAccess;
   ended: boolean;
+  canPutOnAir: boolean;
   onPutOnAir: () => void;
   onRotate: () => void;
   onDismissAccess: () => void;
@@ -248,7 +298,7 @@ function InputCard({
           </span>
         )}
         <span className="flex-1" />
-        {!ended && !input.is_program && (
+        {!ended && canPutOnAir && !input.is_program && (
           <button onClick={onPutOnAir} className="text-[13px] font-semibold text-[#2f5fe0] hover:underline">
             Put on air
           </button>

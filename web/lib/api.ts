@@ -284,6 +284,26 @@ export const api = {
       apiFetch(`${API}/api/matches/${id}/end`, { method: "POST" }).then(json<Match>),
     retryRecording: (id: string): Promise<Match> =>
       apiFetch(`${API}/api/matches/${id}/recording/retry`, { method: "POST" }).then(json<Match>),
+    enableSwitcher: (id: string): Promise<Match> =>
+      apiFetch(`${API}/api/matches/${id}/switcher`, { method: "POST" }).then(json<Match>),
+    disableSwitcher: (id: string): Promise<Match> =>
+      apiFetch(`${API}/api/matches/${id}/switcher`, { method: "DELETE" }).then(json<Match>),
+    cut: (id: string, inputId: string): Promise<Switcher> =>
+      apiFetch(`${API}/api/matches/${id}/switcher/cut`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input_id: inputId }),
+      }).then(json<Switcher>),
+    chooseAudio: (id: string, inputId: string): Promise<Switcher> =>
+      apiFetch(`${API}/api/matches/${id}/switcher/audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input_id: inputId }),
+      }).then(json<Switcher>),
+    switcherCuts: (id: string): Promise<SwitcherCut[]> =>
+      apiFetch(`${API}/api/matches/${id}/switcher/cuts`, { cache: "no-store" }).then(json<SwitcherCut[]>),
+    switcherPreview: (id: string): Promise<SwitcherPreview> =>
+      apiFetch(`${API}/api/matches/${id}/switcher/preview`, { cache: "no-store" }).then(json<SwitcherPreview>),
     addOutput: (id: string, output: { name: string; url: string; stream_key: string }): Promise<MatchOutput> =>
       apiFetch(`${API}/api/matches/${id}/outputs`, {
         method: "POST",
@@ -391,6 +411,39 @@ export interface Match {
   recording_error: string | null;
   inputs: MatchInput[];
   outputs: MatchOutput[];
+  // Null when the program is whatever one input sends.
+  switcher: Switcher | null;
+}
+
+export type SwitcherStatus = "stopped" | "waiting_for_cameras" | "starting" | "running" | "restarting" | "offline";
+
+export interface Switcher {
+  status: SwitcherStatus;
+  error: string | null;
+  warning: string | null;
+  attempts: number;
+  next_retry_at: string | null;
+  program_input_id: string;
+  video_input_id: string;
+  audio_input_id: string;
+  // Null means the slate: a black picture, or silence.
+  on_air_video_input_id: string | null;
+  on_air_audio_input_id: string | null;
+  program_signal: Signal;
+}
+
+export interface SwitcherCut {
+  id: number;
+  kind: "video" | "audio";
+  input_id: string | null;
+  origin: "operator" | "automatic";
+  at: string;
+  match_seconds: number | null;
+}
+
+export interface SwitcherPreview {
+  expires_at: string;
+  sources: { input_id: string; whep_url: string }[];
 }
 
 // The stream key is only ever returned when it is issued.
