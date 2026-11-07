@@ -1,0 +1,14 @@
+# Test rig only: no authentication, and reachable only from the rig on its private Docker network.
+logLevel: warn
+api: no
+rtsp: yes
+rtspAddress: :18554
+rtspTransports: [tcp]
+rtmp: yes
+rtmpAddress: :11935
+hls: no
+webrtc: no
+srt: no
+moq: no
+paths:
+  all_others:
