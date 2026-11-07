@@ -448,6 +448,10 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
 - **Inputs can't be removed** from a match once added.
 - **Keys travel unencrypted.** Encoders send the stream key in the clear over both RTMP and SRT, as
   there's no RTMPS or SRT passphrase set up. Use a VPN on an untrusted network.
+- **The switcher's memory grows for as long as a match lasts,** by about 0.3 MB a minute per camera, in the H.264
+  decoder. It reached 310 MB after 2 hours with three cameras, and the process ends with the match. Nothing limits
+  it, so plan for this on a long match with many cameras. Details are in
+  [the results](prototypes/switcher/RESULTS.md#two-hours).
 - **Without the switcher, changing the input on air reloads the player.** Viewers move over within about 30 seconds,
   with a break in the picture. Each camera needs its own connection and its own bitrate either way.
 - **The switcher has only met generated signals.** Real cameras, phones, OBS, vMix, a real network and bad links

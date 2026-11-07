@@ -102,7 +102,8 @@ it left gaps of up to 287 ms in the program. Sound also moves against the pictur
    stayed at 193 ms.
 2. **Picture ahead of the sound: accepted.** Between 52 and 77 ms across runs, steady within a run. Sound arriving
    this much later than the picture is well inside what viewers tolerate, so nothing corrects it.
-3. **Memory growth: being measured** over 2 hours, as 9 minutes couldn't tell whether it levels off.
+3. **Memory growth: found, not fixed, and small enough for one match.** Over 2 hours it doesn't level off. It grows
+   about 1 MB a minute with three cameras, nearly all of it in `avdec_h264`. See "Two hours" below.
 4. **A program around it: accepted.** About 300 lines of Python, run and supervised by the .NET broadcast service.
 
 ## The switcher as built
@@ -125,6 +126,48 @@ against 27.6 dB, on this test picture.
 | Camera missing at start | Starts, longest wait 91 ms |
 | Killed and restarted by hand | 3.5 s gap |
 | CPU, 720p / 1080p | About 1.0 / 1.77 cores |
+
+## Two hours
+
+`./run.sh <results> product long` on the final `switcher.py`: three cameras at 720p, a cut about every 30 s, 7200 s.
+
+| | Result |
+|---|---|
+| Cuts | 241 of 241 seen, none showing the wrong camera. Median / p95 / max 117 / 162 / 186 ms |
+| Delay of cameras A / B / C, first 20 minutes and last 20 | 191 / 869 / 191 ms and 190 / 868 / 190 ms |
+| Sound against picture, camera A | -59.0 ms in every one of 2513 readings, so no drift |
+| Longest gap between frames arriving | 132 ms |
+| Timestamp steps within 40 ±5 ms | 99.9%, the same in each 20 minutes. Two zero steps, both at the start |
+| Repeated / skipped / damaged frames | 0. 180582 frames, lowest quality 27.7 dB |
+| CPU | 0.91 cores, the same at the end as at the start |
+| Memory | 195 MB at 10 minutes, 252 MB at 60, 310 MB at 120, and still rising |
+
+What grows was narrowed down with separate runs, measuring each process's resident memory once the first minutes had
+passed:
+
+| Runs | Growth |
+|---|---|
+| The switcher with only the slate: encoder, muxer, RTMP | 0.0 MB/min (12 minutes) |
+| The switcher with one camera | about 0.5 MB/min (12 minutes) |
+| `rtspsrc` alone, then with depayloading and parsing | 0.0 and 0.005 MB/min (30 minutes) |
+| The whole sound branch | 0.0 MB/min (30 minutes) |
+| `avdec_h264` and nothing after it | 0.30 MB/min (30 minutes) |
+| The whole picture branch | 0.30 MB/min (30 minutes) |
+
+That is about 200 bytes per decoded frame. Changing `direct-rendering` or `max-threads`, or both, or
+`output-corrupt`, made no difference over 20 minutes, and neither did `MALLOC_ARENA_MAX=1`, which rules out
+fragmentation in the allocator. Neither did taking out `h264parse`. Reading the running time and the frame counters
+from Python was measured separately and costs nothing.
+
+Two results are left unexplained, and neither is used. Over 9 minutes, `openh264dec` didn't grow, but it hasn't been
+tried with B-frames or with what real cameras send. The same 9 minutes showed no growth with `identity` after
+`avdec_h264`, in a process that was also 56 MB larger, so memory freed earlier may simply have been hiding the growth.
+Telling these apart would take hours per run. Only GStreamer 1.24.2 with gst-libav 1.24.1 and libavcodec 6.1 from
+Ubuntu 24.04 was tried, so whether a newer version still does this is unknown.
+
+At these rates a four-hour match with three cameras would reach about 430 MB, extrapolated and not measured. The
+process ends with the match, so the memory goes with it. Restarting it to get memory back would interrupt the program
+for about 3.5 s, which is worse than what it would fix, so nothing does.
 
 ## Not checked
 
