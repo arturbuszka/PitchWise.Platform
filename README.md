@@ -210,7 +210,7 @@ when any one camera is lost, and how it was measured.
 | Camera comes back | Usable again, and back on air by itself if it is still the chosen one. |
 | Camera missing when the switcher starts | Starts anyway. Usable once it appears. |
 | Switcher process is killed | The program is back on MediaMTX about 4 seconds later, with the chosen camera. Destinations reconnect by themselves. It shows as a gap in the recording, and the timeline holds. |
-| A process hangs | Restarted after 10 seconds without a frame. |
+| Switcher process hangs | Killed and restarted after 10 seconds without a frame, leaving a gap of about 14 seconds. |
 | CPU per match | About 1 core at 720p, 1.8 at 1080p. |
 
 ## Sending to YouTube and Twitch
@@ -459,8 +459,8 @@ dotnet ef migrations add <Name> --project shared/PitchWise.Data
   `PUBLIC_WEBRTC_HOST` away from localhost, and allow UDP 8189. There is no TURN server, so a network that blocks
   that port gets no previews. A console on HTTPS needs HTTPS for previews too. Tested in Chromium only: Playwright's
   Firefox has no H264 for WebRTC.
-- **Restarting the broadcast service cuts every program,** which it runs as child processes, for as long as the
-  restart takes. A second instance only stands by.
+- **Restarting the broadcast service cuts every program,** which it runs as child processes. With one match, that
+  left a gap of about 3.5 seconds. A second instance only stands by.
 - **A switcher started after a crash waits for a camera.** With every camera gone, a running program stays on the
   slate, but a restarted one doesn't start until the first camera returns.
 - **A match costs a core.** There is no limit on how many switchers run on one machine, and nothing warns when it

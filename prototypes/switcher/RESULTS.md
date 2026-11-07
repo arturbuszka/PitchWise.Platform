@@ -102,7 +102,7 @@ it left gaps of up to 287 ms in the program. Sound also moves against the pictur
    stayed at 193 ms.
 2. **Picture ahead of the sound: accepted.** Between 52 and 77 ms across runs, steady within a run. Sound arriving
    this much later than the picture is well inside what viewers tolerate, so nothing corrects it.
-3. **Memory:** LONG_RUN_RESULT
+3. **Memory growth: being measured** over 2 hours, as 9 minutes couldn't tell whether it levels off.
 4. **A program around it: accepted.** About 300 lines of Python, run and supervised by the .NET broadcast service.
 
 ## The switcher as built
