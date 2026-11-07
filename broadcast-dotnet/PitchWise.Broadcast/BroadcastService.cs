@@ -5,6 +5,7 @@ namespace PitchWise.Broadcast;
 /// <summary>Runs the supervisor while this instance is the one that may send.</summary>
 public sealed class BroadcastService(
     OutputSupervisor supervisor,
+    SwitcherSupervisor switchers,
     SingleInstanceLock instance,
     OutputKeyCipher cipher,
     BroadcastSettings settings,
@@ -31,20 +32,22 @@ public sealed class BroadcastService(
                             holding = true;
                             standingBy = false;
                         }
-                        await supervisor.TickAsync(stoppingToken);
+                        // Side by side, as a slow destination must not hold up a program, or the other way round.
+                        await Task.WhenAll(
+                            LookAfter("outputs", () => supervisor.TickAsync(stoppingToken)),
+                            LookAfter("switchers", () => switchers.TickAsync(stoppingToken)));
                     }
                     else
                     {
                         if (!standingBy) log.LogWarning("Another broadcast service is running. Standing by.");
                         standingBy = true;
                         holding = false;
-                        await supervisor.StopAllAsync();
+                        await Task.WhenAll(supervisor.StopAllAsync(), switchers.StopAllAsync());
                     }
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    // Most likely the database. What is running keeps running, as it doesn't need it.
-                    log.LogWarning("Could not look after outputs: {Message}", e.Message);
+                    log.LogWarning("Could not tell whether this instance may send: {Message}", e.Message);
                 }
                 await Task.Delay(settings.TickInterval, stoppingToken);
             }
@@ -55,8 +58,21 @@ public sealed class BroadcastService(
         }
         finally
         {
-            await supervisor.StopAllAsync();
+            await Task.WhenAll(supervisor.StopAllAsync(), switchers.StopAllAsync());
             await instance.DisposeAsync();
+        }
+    }
+
+    private async Task LookAfter(string what, Func<Task> tick)
+    {
+        try
+        {
+            await tick();
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Most likely the database. What is running keeps running, as it doesn't need it.
+            log.LogWarning("Could not look after {What}: {Message}", what, e.Message);
         }
     }
 }

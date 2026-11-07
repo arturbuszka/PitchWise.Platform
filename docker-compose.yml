@@ -36,6 +36,8 @@ services:
       # What encoders are told to publish to.
       RTMP_INGEST_URL: "${PUBLIC_RTMP_URL:-rtmp://localhost:1935}"
       SRT_INGEST_URL: "${PUBLIC_SRT_URL:-srt://localhost:8890}"
+      # Where an operator's browser gets its low-delay previews.
+      WEBRTC_BASE_URL: "${PUBLIC_WEBRTC_URL:-http://localhost:8889}"
       # Where the public match pages live.
       WEB_ORIGIN: "${PUBLIC_WEB_URL:-http://localhost:3000}"
       MEDIAMTX_API_URL: "http://mediamtx:9997"
@@ -76,8 +78,8 @@ services:
       api:
         condition: service_healthy
 
-  # Sends matches on to YouTube and Twitch. Its own service, so restarting the worker doesn't cut a broadcast,
-  # and the only one that needs to reach destinations.
+  # Runs each match's switcher, and sends matches on to YouTube and Twitch. Its own service, so restarting the
+  # worker doesn't cut a broadcast, and the only one that needs to reach destinations.
   broadcast:
     build:
       context: .
@@ -87,6 +89,7 @@ services:
       DATABASE_CONNECTION: "Host=postgres;Port=5432;Database=pitchwise;Username=pitchwise;Password=pitchwise"
       MEDIAMTX_API_URL: "http://mediamtx:9997"
       MEDIAMTX_RTSP_URL: "rtsp://mediamtx:8554"
+      MEDIAMTX_RTMP_URL: "rtmp://mediamtx:1935"
       MEDIAMTX_READ_SECRET: "${MEDIAMTX_READ_SECRET:-devsecret}"
       OUTPUT_ENCRYPTION_KEY: "${OUTPUT_ENCRYPTION_KEY:-}"
       # Only for trying this against a local server.
@@ -109,7 +112,12 @@ services:
     ports:
       - "1935:1935"
       - "8890:8890/udp"
+      # The operator's previews. WebRTC needs the signalling port and the media port both.
+      - "8889:8889"
+      - "8189:8189/udp"
     environment:
+      # The address browsers can send media back and forth with.
+      MTX_WEBRTCADDITIONALHOSTS: "${PUBLIC_WEBRTC_HOST:-127.0.0.1}"
       MTX_AUTHHTTPADDRESS: "http://api:8000/internal/mediamtx/auth/${MEDIAMTX_AUTH_SECRET:-devsecret}"
       MTX_HLSCDNSECRET: "${MEDIAMTX_CDN_SECRET:-devsecret}"
     volumes:
