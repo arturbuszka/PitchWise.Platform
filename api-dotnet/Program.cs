@@ -35,6 +35,7 @@ settings.SrtIngestUrl = Environment.GetEnvironmentVariable("SRT_INGEST_URL") ?? 
 settings.MediaMtxApiUrl = Environment.GetEnvironmentVariable("MEDIAMTX_API_URL") ?? settings.MediaMtxApiUrl;
 settings.MediaMtxAuthSecret = Environment.GetEnvironmentVariable("MEDIAMTX_AUTH_SECRET") ?? settings.MediaMtxAuthSecret;
 settings.MediaMtxReadSecret = Environment.GetEnvironmentVariable("MEDIAMTX_READ_SECRET") ?? settings.MediaMtxReadSecret;
+settings.WebRtcBaseUrl = Environment.GetEnvironmentVariable("WEBRTC_BASE_URL") ?? settings.WebRtcBaseUrl;
 settings.OutputEncryptionKey = Environment.GetEnvironmentVariable("OUTPUT_ENCRYPTION_KEY") ?? settings.OutputEncryptionKey;
 settings.EnsureDirs();
 builder.Services.AddSingleton(settings);
@@ -49,6 +50,8 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(
 builder.Services.AddSingleton<HighlightQueue>();
 builder.Services.AddSingleton<RecordingQueue>();
 builder.Services.AddSingleton<HlsSigner>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<PreviewSigner>();
 
 // --- Auth: every endpoint needs an API key unless it opts out with [AllowAnonymous] ---
 builder.Services.AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
@@ -85,6 +88,9 @@ builder.Services.AddControllers(o => o.Filters.Add<AnalysisAccessFilter>()).AddJ
     o.JsonSerializerOptions.Converters.Add(new MatchStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new RecordingStatusJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new OutputStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new SwitcherStatusJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new SwitcherCutKindJsonConverter());
+    o.JsonSerializerOptions.Converters.Add(new SwitcherCutOriginJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new SignalStateJsonConverter());
     o.JsonSerializerOptions.Converters.Add(new HighlightStatusJsonConverter());
 });

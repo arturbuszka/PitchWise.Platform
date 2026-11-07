@@ -10,7 +10,7 @@ public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner 
     // The service reports every second or two, so this is several missed reports.
     private static readonly TimeSpan OutputServiceQuiet = TimeSpan.FromSeconds(15);
 
-    public MatchOut ToOut(Match match, IEnumerable<MatchInput> inputs, IEnumerable<MatchOutput> outputs)
+    public MatchOut ToOut(Match match, IEnumerable<MatchInput> inputs, IEnumerable<MatchOutput> outputs, MatchSwitcher? switcher)
     {
         var web = settings.WebOrigin.TrimEnd('/');
         var embedUrl = $"{web}/embed/{match.PublicId}";
@@ -29,8 +29,26 @@ public class MatchMapper(AppSettings settings, SignalTracker signals, HlsSigner 
             match.EndedAt,
             match.RecordingStatus,
             match.RecordingError,
-            inputs.OrderBy(i => i.CreatedAt).Select(i => ToOut(match, i)).ToList(),
-            outputs.OrderBy(o => o.CreatedAt).Select(ToOut).ToList());
+            inputs.Where(i => !i.IsSwitcherProgram).OrderBy(i => i.CreatedAt).Select(i => ToOut(match, i)).ToList(),
+            outputs.OrderBy(o => o.CreatedAt).Select(ToOut).ToList(),
+            switcher is { Enabled: true } ? ToOut(switcher) : null);
+    }
+
+    public SwitcherOut ToOut(MatchSwitcher switcher)
+    {
+        var quiet = switcher.LastSeenAt is null || switcher.LastSeenAt < DateTime.UtcNow - OutputServiceQuiet;
+        return new SwitcherOut(
+            quiet ? SwitcherStatus.Offline : switcher.Status,
+            quiet ? "The broadcast service isn't responding, so the switcher's state is unknown." : switcher.Error,
+            switcher.Warning,
+            switcher.Attempts,
+            switcher.NextRetryAt,
+            switcher.ProgramInputId,
+            switcher.VideoInputId,
+            switcher.AudioInputId,
+            switcher.OnAirVideoInputId,
+            switcher.OnAirAudioInputId,
+            signals.Get(MatchInput.PathFor(switcher.ProgramInputId)));
     }
 
     public OutputOut ToOut(MatchOutput output)

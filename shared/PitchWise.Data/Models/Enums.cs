@@ -74,3 +74,26 @@ public enum OutputStatus
     Failed,             // gave up, or can't start without a change; needs someone to act
     Offline,
 }
+
+// What a match's switcher is doing. Offline is never stored: the API reports it when the service has gone quiet.
+public enum SwitcherStatus
+{
+    Stopped,
+    WaitingForCameras,  // waiting_for_cameras: no program until the first camera arrives, so time zero isn't a black screen
+    Starting,
+    Running,
+    Restarting,         // it stopped, and starts again at NextRetryAt
+    Offline,
+}
+
+public enum SwitcherCutKind
+{
+    Video,
+    Audio,
+}
+
+public enum SwitcherCutOrigin
+{
+    Operator,
+    Automatic,  // the slate took over from a lost camera, or the camera came back
+}
